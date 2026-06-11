@@ -1,4 +1,3 @@
-const { addClient, removeClient, sendEvent } = require("../services/sseManager");
 const { generateReply } = require("../services/huggingFaceService");
 const {
   MAX_HISTORY_LENGTH,
@@ -32,81 +31,61 @@ const normalizeIncomingHistory = (history) => {
     .slice(-MAX_HISTORY_LENGTH);
 };
 
-const postMessage = (req, res, next) => {
+const postMessage = async (req, res, next) => {
   const validation = validateMessage(req.body?.message);
   if (!validation.valid) {
     return res.status(400).json({ error: validation.error });
   }
 
   const cleanMessage = sanitizeMessage(validation.value);
-  res.json({ status: "queued" });
 
-  const sessionId = req.sessionID;
-  sendEvent(sessionId, "typing", { active: true });
-
-  Promise.resolve()
-    .then(async () => {
-      const incomingHistory = normalizeIncomingHistory(req.body?.history);
-      const lastMessage = incomingHistory[incomingHistory.length - 1];
-      const historyForModel =
-        lastMessage?.role === "user" && lastMessage.content === cleanMessage
-          ? incomingHistory.slice(0, -1)
-          : incomingHistory;
-      const reply = await generateReply({
-        message: cleanMessage,
-        history: historyForModel
-      });
-      const cleanReply = sanitizeMessage(reply);
-      const words = cleanReply.match(/\S+\s*/g) || [];
-
-      sendEvent(sessionId, "botChunk", { text: null, start: true });
-
-      let wi = 0;
-      const pushNext = () => {
-        if (wi >= words.length) {
-          sendEvent(sessionId, "typing", { active: false });
-          sendEvent(sessionId, "botChunk", { text: null, done: true });
-          return;
-        }
-        sendEvent(sessionId, "botChunk", { text: words[wi] });
-        wi += 1;
-        setTimeout(pushNext, 35);
-      };
-      pushNext();
-    })
-    .catch((error) => {
-      sendEvent(sessionId, "typing", { active: false });
-      sendEvent(sessionId, "botError", {
-        message: "Unable to generate a response. Please try again."
-      });
-      next(error);
-    });
-};
-
-const streamEvents = (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Content-Type", "text/plain");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const sessionId = req.sessionID;
-  addClient(sessionId, res);
+  const send = (obj) => { res.write(JSON.stringify(obj) + "\n"); };
 
-  const pingInterval = setInterval(() => {
-    res.write("event: ping\n");
-    res.write("data: {}\n\n");
-  }, 20000);
+  send({ type: "typing", active: true });
 
-  req.on("close", () => {
-    clearInterval(pingInterval);
-    removeClient(sessionId, res);
-  });
+  try {
+    const incomingHistory = normalizeIncomingHistory(req.body?.history);
+    const lastMessage = incomingHistory[incomingHistory.length - 1];
+    const historyForModel =
+      lastMessage?.role === "user" && lastMessage.content === cleanMessage
+        ? incomingHistory.slice(0, -1)
+        : incomingHistory;
+
+    const reply = await generateReply({
+      message: cleanMessage,
+      history: historyForModel
+    });
+
+    const cleanReply = sanitizeMessage(reply);
+    const words = cleanReply.match(/\S+\s*/g) || [];
+
+    send({ type: "start" });
+
+    for (let wi = 0; wi < words.length; wi++) {
+      send({ type: "chunk", text: words[wi] });
+      await new Promise((r) => setTimeout(r, 35));
+    }
+
+    send({ type: "typing", active: false });
+    send({ type: "done" });
+    res.end();
+  } catch (error) {
+    send({ type: "typing", active: false });
+    send({ type: "error", message: "Unable to generate a response. Please try again." });
+    res.end();
+    next(error);
+  }
 };
 
 module.exports = {
   getHistory: getHistoryHandler,
   clearHistory: clearHistoryHandler,
   setHistory: setHistoryHandler,
-  postMessage,
-  streamEvents
+  postMessage
 };

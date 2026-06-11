@@ -951,97 +951,87 @@ if (newChatButtonMain) {
   newChatButtonMain.addEventListener("click", handleNewChat);
 }
 
-let streamingMsg = null;
+const startStreamEvent = (reader, decoder) => {
+  let buffer = "";
+  let streamingMsg = null;
 
-const finalizeStream = () => {
-  if (!streamingMsg) return;
-  const bubble = document.querySelector(`[data-sid="${streamingMsg.sid}"]`);
-  if (bubble) {
-    const wrapper = bubble.querySelector(".message-content");
-    if (wrapper) {
-      const rebuilt = buildMessageContent(streamingMsg.content);
-      wrapper.innerHTML = "";
-      wrapper.appendChild(rebuilt);
-    }
-    delete bubble.dataset.sid;
-  }
-  delete streamingMsg._bubble;
-  if (!streamingMsg.content) {
-    const idx = currentChat.messages.findIndex((m) => m._temp);
-    if (idx !== -1) currentChat.messages.splice(idx, 1);
-  } else {
-    delete streamingMsg._temp;
-    if (!currentChat.titleIsCustom) {
-      currentChat.title = getTitleFromMessages(currentChat.messages);
-      if (currentChatTitle) currentChatTitle.textContent = currentChat.title;
-    }
-    syncCurrentChatToHistoryIfExists();
-    persistState();
-  }
-  streamingMsg = null;
-};
+  return {
+    readNext: async () => {
+      while (true) {
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-const startStream = () => {
-  const source = new EventSource("/api/stream");
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const msg = JSON.parse(line);
 
-  source.addEventListener("typing", (event) => {
-    const data = JSON.parse(event.data);
-    setTyping(data.active);
-  });
+          if (msg.type === "typing") {
+            setTyping(msg.active);
+          } else if (msg.type === "start") {
+            streamingMsg = { role: "bot", content: "", timestamp: Date.now() };
+            currentChat.messages.push(streamingMsg);
 
-  source.addEventListener("botChunk", (event) => {
-    const data = JSON.parse(event.data);
+            const bubble = document.createElement("div");
+            bubble.className = "message bot";
+            const wrapper = document.createElement("div");
+            wrapper.className = "message-content";
+            const tb = document.createElement("div");
+            tb.className = "message-text";
+            tb.textContent = "";
+            wrapper.appendChild(tb);
+            bubble.appendChild(wrapper);
+            messagesContainer.appendChild(bubble);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            welcomeScreen.classList.add("hidden");
+            chatArea.classList.remove("hidden");
+          } else if (msg.type === "chunk" && streamingMsg) {
+            streamingMsg.content += msg.text;
+            const lastBubble = messagesContainer.lastElementChild;
+            if (lastBubble) {
+              const tb = lastBubble.querySelector(".message-text");
+              if (tb) tb.textContent = streamingMsg.content;
+              messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+          } else if (msg.type === "done") {
+            if (streamingMsg) {
+              const lastBubble = messagesContainer.lastElementChild;
+              if (lastBubble) {
+                const wrapper = lastBubble.querySelector(".message-content");
+                if (wrapper) {
+                  const rebuilt = buildMessageContent(streamingMsg.content);
+                  wrapper.innerHTML = "";
+                  wrapper.appendChild(rebuilt);
+                }
+              }
+              if (!currentChat.titleIsCustom) {
+                currentChat.title = getTitleFromMessages(currentChat.messages);
+                if (currentChatTitle) currentChatTitle.textContent = currentChat.title;
+              }
+              syncCurrentChatToHistoryIfExists();
+              persistState();
+              streamingMsg = null;
+            }
+            return "done";
+          } else if (msg.type === "error") {
+            if (streamingMsg) {
+              const idx = currentChat.messages.indexOf(streamingMsg);
+              if (idx !== -1) currentChat.messages.splice(idx, 1);
+              if (messagesContainer.lastElementChild?.classList.contains("message")) {
+                messagesContainer.lastElementChild.remove();
+              }
+              streamingMsg = null;
+            }
+            addMessageToCurrent("bot", msg.message || "Something went wrong.");
+            return "error";
+          }
+        }
 
-    if (data.start) {
-      if (streamingMsg) finalizeStream();
-      const sid = generateId();
-      streamingMsg = {
-        sid,
-        role: "bot",
-        content: "",
-        timestamp: Date.now(),
-        _temp: true
-      };
-      currentChat.messages.push(streamingMsg);
-
-      const bubble = document.createElement("div");
-      bubble.className = "message bot";
-      bubble.dataset.sid = sid;
-      const wrapper = document.createElement("div");
-      wrapper.className = "message-content";
-      const tb = document.createElement("div");
-      tb.className = "message-text";
-      tb.textContent = "";
-      wrapper.appendChild(tb);
-      bubble.appendChild(wrapper);
-      messagesContainer.appendChild(bubble);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      welcomeScreen.classList.add("hidden");
-      chatArea.classList.remove("hidden");
-      return;
-    }
-
-    if (data.done) {
-      finalizeStream();
-      return;
-    }
-
-    if (data.text && streamingMsg) {
-      streamingMsg.content += data.text;
-      const bubble = document.querySelector(`[data-sid="${streamingMsg.sid}"]`);
-      if (bubble) {
-        const tb = bubble.querySelector(".message-text");
-        if (tb) tb.textContent = streamingMsg.content;
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        const { done, value } = await reader.read();
+        if (done) return "done";
+        buffer += decoder.decode(value, { stream: true });
       }
     }
-  });
-
-  source.addEventListener("botError", (event) => {
-    const data = JSON.parse(event.data);
-    if (streamingMsg) finalizeStream();
-    addMessageToCurrent("bot", data.message);
-  });
+  };
 };
 
 messageInput.addEventListener("input", () => {
@@ -1100,18 +1090,24 @@ chatForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ message, history: currentChat.messages }),
       credentials: "include"
     });
+
     if (!response.ok) {
-      const data = await response.json();
-      const errorMessage = data.error || "Something went wrong.";
-      addMessageToCurrent("bot", errorMessage);
-      showToast(errorMessage, "error");
-    } else {
-      showToast("Message sent!", "success");
+      const data = await response.json().catch(() => ({}));
+      addMessageToCurrent("bot", data.error || "Something went wrong.");
+      sendButton.disabled = false;
+      messageInput.focus();
+      return;
     }
+
+    setTyping(true);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const stream = startStreamEvent(reader, decoder);
+    await stream.readNext();
   } catch (error) {
-    const errorMessage = "Network error. Please try again.";
-    addMessageToCurrent("bot", errorMessage);
-    showToast(errorMessage, "error");
+    setTyping(false);
+    addMessageToCurrent("bot", "Network error. Please try again.");
   } finally {
     sendButton.disabled = false;
     messageInput.focus();
@@ -1119,4 +1115,3 @@ chatForm.addEventListener("submit", async (event) => {
 });
 
 initializeMessages();
-startStream();
