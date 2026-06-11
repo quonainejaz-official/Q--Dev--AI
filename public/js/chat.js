@@ -970,20 +970,7 @@ const startStreamEvent = (reader, decoder) => {
           } else if (msg.type === "start") {
             streamingMsg = { role: "bot", content: "", timestamp: Date.now() };
             currentChat.messages.push(streamingMsg);
-
-            const bubble = document.createElement("div");
-            bubble.className = "message bot";
-            const wrapper = document.createElement("div");
-            wrapper.className = "message-content";
-            const tb = document.createElement("div");
-            tb.className = "message-text";
-            tb.textContent = "";
-            wrapper.appendChild(tb);
-            bubble.appendChild(wrapper);
-            messagesContainer.appendChild(bubble);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            welcomeScreen.classList.add("hidden");
-            chatArea.classList.remove("hidden");
+            appendMessageToUI(streamingMsg);
           } else if (msg.type === "chunk" && streamingMsg) {
             streamingMsg.content += msg.text;
             const lastBubble = messagesContainer.lastElementChild;
@@ -1003,49 +990,6 @@ const startStreamEvent = (reader, decoder) => {
                   while (rebuilt.firstChild) {
                     wrapper.appendChild(rebuilt.firstChild);
                   }
-                }
-                if (!lastBubble.querySelector(".message-actions")) {
-                  const actions = document.createElement("div");
-                  actions.className = "message-actions";
-
-                  const copyBtn = document.createElement("button");
-                  copyBtn.className = "message-action-btn copy-btn";
-                  copyBtn.innerHTML =
-                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-                  copyBtn.title = "Copy message";
-                  copyBtn.addEventListener("click", async () => {
-                    const success = await copyToClipboard(streamingMsg.content);
-                    if (success) {
-                      copyBtn.classList.add("copied");
-                      copyBtn.innerHTML =
-                        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-                      copyBtn.title = "Copied!";
-                      setTimeout(() => {
-                        copyBtn.classList.remove("copied");
-                        copyBtn.innerHTML =
-                          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-                        copyBtn.title = "Copy message";
-                      }, 2000);
-                    } else {
-                      showToast("Failed to copy message", "error");
-                    }
-                  });
-
-                  const editBtn = document.createElement("button");
-                  editBtn.className = "message-action-btn edit-btn";
-                  editBtn.innerHTML =
-                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
-                  editBtn.title = "Edit message";
-                  editBtn.addEventListener("click", () => {
-                    messageInput.value = streamingMsg.content;
-                    messageInput.focus();
-                    messageInput.style.height = "auto";
-                    messageInput.style.height = messageInput.scrollHeight + "px";
-                  });
-
-                  actions.appendChild(copyBtn);
-                  actions.appendChild(editBtn);
-                  lastBubble.appendChild(actions);
                 }
               }
               if (!currentChat.titleIsCustom) {
