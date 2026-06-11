@@ -25,8 +25,12 @@ const sendEvent = (sessionId, eventName, payload) => {
   }
   const data = JSON.stringify(payload);
   sessionClients.forEach((client) => {
-    client.write(`event: ${eventName}\n`);
-    client.write(`data: ${data}\n\n`);
+    try {
+      client.write(`event: ${eventName}\n`);
+      client.write(`data: ${data}\n\n`);
+    } catch (_) {
+      removeClient(sessionId, client);
+    }
   });
 };
 

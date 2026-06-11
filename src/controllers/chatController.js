@@ -57,8 +57,22 @@ const postMessage = (req, res, next) => {
         history: historyForModel
       });
       const cleanReply = sanitizeMessage(reply);
-      sendEvent(sessionId, "typing", { active: false });
-      sendEvent(sessionId, "bot", { message: cleanReply });
+      const words = cleanReply.match(/\S+\s*/g) || [];
+
+      sendEvent(sessionId, "botChunk", { text: null, start: true });
+
+      let wi = 0;
+      const pushNext = () => {
+        if (wi >= words.length) {
+          sendEvent(sessionId, "typing", { active: false });
+          sendEvent(sessionId, "botChunk", { text: null, done: true });
+          return;
+        }
+        sendEvent(sessionId, "botChunk", { text: words[wi] });
+        wi += 1;
+        setTimeout(pushNext, 35);
+      };
+      pushNext();
     })
     .catch((error) => {
       sendEvent(sessionId, "typing", { active: false });

@@ -951,6 +951,36 @@ if (newChatButtonMain) {
   newChatButtonMain.addEventListener("click", handleNewChat);
 }
 
+let streamingMsg = null;
+
+const finalizeStream = () => {
+  if (!streamingMsg) return;
+  const bubble = document.querySelector(`[data-sid="${streamingMsg.sid}"]`);
+  if (bubble) {
+    const wrapper = bubble.querySelector(".message-content");
+    if (wrapper) {
+      const rebuilt = buildMessageContent(streamingMsg.content);
+      wrapper.innerHTML = "";
+      wrapper.appendChild(rebuilt);
+    }
+    delete bubble.dataset.sid;
+  }
+  delete streamingMsg._bubble;
+  if (!streamingMsg.content) {
+    const idx = currentChat.messages.findIndex((m) => m._temp);
+    if (idx !== -1) currentChat.messages.splice(idx, 1);
+  } else {
+    delete streamingMsg._temp;
+    if (!currentChat.titleIsCustom) {
+      currentChat.title = getTitleFromMessages(currentChat.messages);
+      if (currentChatTitle) currentChatTitle.textContent = currentChat.title;
+    }
+    syncCurrentChatToHistoryIfExists();
+    persistState();
+  }
+  streamingMsg = null;
+};
+
 const startStream = () => {
   const source = new EventSource("/api/stream");
 
@@ -959,13 +989,57 @@ const startStream = () => {
     setTyping(data.active);
   });
 
-  source.addEventListener("bot", (event) => {
+  source.addEventListener("botChunk", (event) => {
     const data = JSON.parse(event.data);
-    addMessageToCurrent("bot", data.message);
+
+    if (data.start) {
+      if (streamingMsg) finalizeStream();
+      const sid = generateId();
+      streamingMsg = {
+        sid,
+        role: "bot",
+        content: "",
+        timestamp: Date.now(),
+        _temp: true
+      };
+      currentChat.messages.push(streamingMsg);
+
+      const bubble = document.createElement("div");
+      bubble.className = "message bot";
+      bubble.dataset.sid = sid;
+      const wrapper = document.createElement("div");
+      wrapper.className = "message-content";
+      const tb = document.createElement("div");
+      tb.className = "message-text";
+      tb.textContent = "";
+      wrapper.appendChild(tb);
+      bubble.appendChild(wrapper);
+      messagesContainer.appendChild(bubble);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      welcomeScreen.classList.add("hidden");
+      chatArea.classList.remove("hidden");
+      return;
+    }
+
+    if (data.done) {
+      finalizeStream();
+      return;
+    }
+
+    if (data.text && streamingMsg) {
+      streamingMsg.content += data.text;
+      const bubble = document.querySelector(`[data-sid="${streamingMsg.sid}"]`);
+      if (bubble) {
+        const tb = bubble.querySelector(".message-text");
+        if (tb) tb.textContent = streamingMsg.content;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+    }
   });
 
   source.addEventListener("botError", (event) => {
     const data = JSON.parse(event.data);
+    if (streamingMsg) finalizeStream();
     addMessageToCurrent("bot", data.message);
   });
 };
