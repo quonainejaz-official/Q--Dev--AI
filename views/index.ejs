@@ -98,22 +98,54 @@
                 maxlength="50000"
                 rows="1"
               ></textarea>
+              <div id="imageModeBanner" class="image-mode-banner hidden">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+                <span>Image generation mode</span>
+                <button id="exitImageModeBtn" type="button" class="exit-image-mode-btn">&times;</button>
+              </div>
               <div class="input-footer">
+                <div class="input-actions-left">
+                  <div class="add-btn-wrapper">
+                    <button id="addButton" type="button" class="add-btn" title="Add content">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </button>
+                    <div id="addMenu" class="add-menu hidden">
+                      <button class="add-menu-item" data-action="file">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                        </svg>
+                        <span>Add photos & files</span>
+                      </button>
+                      <button class="add-menu-item" data-action="audio">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M9 18V5l12-2v13"></path>
+                          <circle cx="6" cy="18" r="3"></circle>
+                          <circle cx="18" cy="16" r="3"></circle>
+                        </svg>
+                        <span>Upload audio</span>
+                      </button>
+                      <div class="add-menu-divider"></div>
+                      <button class="add-menu-item" data-action="image-gen">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                          <polyline points="21 15 16 10 5 21"></polyline>
+                        </svg>
+                        <span>Create image</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div class="input-actions-right">
-                  <button id="attachButton" type="button" class="attach-btn" title="Attach file">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                    </svg>
-                  </button>
                   <input type="file" id="fileInput" accept="image/*,audio/*,video/*,application/pdf" multiple hidden />
                   <input type="file" id="imageInput" accept="image/*" multiple hidden />
-                  <button id="audioAttachButton" type="button" class="attach-btn" title="Attach audio">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M9 18V5l12-2v13"></path>
-                      <circle cx="6" cy="18" r="3"></circle>
-                      <circle cx="18" cy="16" r="3"></circle>
-                    </svg>
-                  </button>
                   <input type="file" id="audioInput" accept="audio/*" multiple hidden />
                   <button id="sendButton" type="submit" class="send-btn" disabled>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

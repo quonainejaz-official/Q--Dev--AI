@@ -22,6 +22,58 @@ const audioAttachButton = document.getElementById("audioAttachButton");
 const audioInput = document.getElementById("audioInput");
 const fileInput = document.getElementById("fileInput");
 const exportPdfBtn = document.getElementById("exportPdfBtn");
+const addButton = document.getElementById("addButton");
+const addMenu = document.getElementById("addMenu");
+const imageModeBanner = document.getElementById("imageModeBanner");
+const exitImageModeBtn = document.getElementById("exitImageModeBtn");
+
+let isImageMode = false;
+
+const enterImageMode = () => {
+  isImageMode = true;
+  imageModeBanner.classList.remove("hidden");
+  messageInput.placeholder = "Describe what to create";
+  messageInput.focus();
+  addMenu.classList.add("hidden");
+};
+
+const exitImageMode = () => {
+  isImageMode = false;
+  imageModeBanner.classList.add("hidden");
+  messageInput.placeholder = "Message";
+};
+
+if (exitImageModeBtn) {
+  exitImageModeBtn.addEventListener("click", exitImageMode);
+}
+
+if (addButton) {
+  addButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    addMenu.classList.toggle("hidden");
+  });
+}
+
+if (addMenu) {
+  addMenu.querySelectorAll(".add-menu-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+      if (action === "file") {
+        fileInput.click();
+      } else if (action === "audio") {
+        audioInput.click();
+      } else if (action === "image-gen") {
+        enterImageMode();
+      }
+      addMenu.classList.add("hidden");
+    });
+  });
+}
+
+document.addEventListener("click", () => {
+  if (addMenu) addMenu.classList.add("hidden");
+});
 
 
 const MESSAGE_LIMITS = {
@@ -1556,10 +1608,11 @@ chatForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  // Check for /imagine command
+  // Check for /imagine command or image mode
   const isImagineCmd = message.startsWith(IMG_CMD) && !hasMedia;
-  if (isImagineCmd) {
-    const prompt = message.slice(IMG_CMD.length).trim();
+  const shouldGenerateImage = isImagineCmd || (isImageMode && !hasMedia);
+  if (shouldGenerateImage) {
+    const prompt = isImagineCmd ? message.slice(IMG_CMD.length).trim() : message;
     if (prompt) {
       addMessageToCurrent("user", message);
       messageInput.value = "";
