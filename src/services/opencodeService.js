@@ -9,7 +9,21 @@ const extractAudioData = (dataUrl) => {
   return null;
 };
 
-const buildMultimodalMessages = (history, text, images, audios) => {
+const buildAttachmentPart = (att) => {
+  switch (att.type) {
+    case "image":
+      return { type: "image_url", image_url: { url: att.dataUrl } };
+    case "audio": {
+      const audioData = extractAudioData(att.dataUrl);
+      if (!audioData) return null;
+      return { type: "input_audio", input_audio: { data: audioData.data, format: audioData.format } };
+    }
+    default:
+      return { type: "image_url", image_url: { url: att.dataUrl } };
+  }
+};
+
+const buildMultimodalMessages = (history, text, attachments) => {
   const messages = [
     {
       role: "system",
@@ -28,28 +42,15 @@ const buildMultimodalMessages = (history, text, images, audios) => {
   }
 
   const content = [];
-  if (text) {
-    content.push({ type: "text", text });
-  }
-  if (Array.isArray(images)) {
-    images.forEach((dataUrl) => {
-      content.push({ type: "image_url", image_url: { url: dataUrl } });
-    });
-  }
-  if (Array.isArray(audios)) {
-    audios.forEach((dataUrl) => {
-      const audioData = extractAudioData(dataUrl);
-      if (audioData) {
-        content.push({
-          type: "input_audio",
-          input_audio: { data: audioData.data, format: audioData.format }
-        });
-      }
+  if (text) content.push({ type: "text", text });
+  if (Array.isArray(attachments)) {
+    attachments.forEach((att) => {
+      const part = buildAttachmentPart(att);
+      if (part) content.push(part);
     });
   }
 
   messages.push({ role: "user", content });
-
   return messages;
 };
 
@@ -66,10 +67,18 @@ const parseReply = (payload) => {
   return payload.choices?.[0]?.message?.content || null;
 };
 
-const generateVisionReply = async ({ message, history, images, audios }) => {
+const generateVisionReply = async ({ message, history, images, audios, attachments }) => {
+  const allAttachments = attachments || [];
+  if (Array.isArray(images)) {
+    images.forEach((d) => allAttachments.push({ type: "image", dataUrl: d }));
+  }
+  if (Array.isArray(audios)) {
+    audios.forEach((d) => allAttachments.push({ type: "audio", dataUrl: d }));
+  }
+
   const body = JSON.stringify({
     model: VISION_MODEL,
-    messages: buildMultimodalMessages(history, message, images, audios)
+    messages: buildMultimodalMessages(history, message, allAttachments)
   });
 
   const response = await fetch(OPENCODE_API_URL, {
