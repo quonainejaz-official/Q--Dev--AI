@@ -1,7 +1,15 @@
 const OPENCODE_API_URL = "https://opencode.ai/zen/v1/chat/completions";
 const VISION_MODEL = "mimo-v2.5-free";
 
-const buildVisionMessages = (history, text, images) => {
+const extractAudioData = (dataUrl) => {
+  const match = dataUrl.match(/^data:audio\/(\w+);base64,(.+)$/);
+  if (match) {
+    return { data: match[2], format: match[1] === "mpeg" ? "mp3" : match[1] };
+  }
+  return null;
+};
+
+const buildMultimodalMessages = (history, text, images, audios) => {
   const messages = [
     {
       role: "system",
@@ -28,6 +36,17 @@ const buildVisionMessages = (history, text, images) => {
       content.push({ type: "image_url", image_url: { url: dataUrl } });
     });
   }
+  if (Array.isArray(audios)) {
+    audios.forEach((dataUrl) => {
+      const audioData = extractAudioData(dataUrl);
+      if (audioData) {
+        content.push({
+          type: "input_audio",
+          input_audio: { data: audioData.data, format: audioData.format }
+        });
+      }
+    });
+  }
 
   messages.push({ role: "user", content });
 
@@ -47,10 +66,10 @@ const parseReply = (payload) => {
   return payload.choices?.[0]?.message?.content || null;
 };
 
-const generateVisionReply = async ({ message, history, images }) => {
+const generateVisionReply = async ({ message, history, images, audios }) => {
   const body = JSON.stringify({
     model: VISION_MODEL,
-    messages: buildVisionMessages(history, message, images)
+    messages: buildMultimodalMessages(history, message, images, audios)
   });
 
   const response = await fetch(OPENCODE_API_URL, {

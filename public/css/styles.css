@@ -756,6 +756,60 @@ body {
   margin-left: 4px;
 }
 
+/* Audio preview thumb */
+.preview-thumb.audio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  width: 56px;
+  height: 56px;
+}
+
+.preview-thumb.audio svg {
+  width: 24px;
+  height: 24px;
+  color: var(--accent-blue);
+}
+
+.audio-filename {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+
+/* User message audio */
+.message.user .message-audios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.message-audio-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.message-audio-tag svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
 /* User message images */
 .message.user .message-images {
   display: flex;

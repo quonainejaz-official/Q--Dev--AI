@@ -18,6 +18,8 @@ const attachButton = document.getElementById("attachButton");
 const imageInput = document.getElementById("imageInput");
 const imagePreviewBar = document.getElementById("imagePreviewBar");
 const previewImagesList = document.getElementById("previewImagesList");
+const audioAttachButton = document.getElementById("audioAttachButton");
+const audioInput = document.getElementById("audioInput");
 
 const MESSAGE_LIMITS = {
   maxLines: 5000,
@@ -73,7 +75,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const renderImagePreviews = () => {
   previewImagesList.innerHTML = "";
-  if (currentImages.length === 0) {
+  if (currentImages.length === 0 && currentAudios.length === 0) {
     imagePreviewBar.classList.add("hidden");
     return;
   }
@@ -96,6 +98,7 @@ const renderImagePreviews = () => {
     thumb.append(img, btn);
     previewImagesList.appendChild(thumb);
   });
+  renderAudioPreviews();
 };
 
 const addImagesFromFiles = (files) => {
@@ -127,6 +130,68 @@ attachButton.addEventListener("click", () => {
 imageInput.addEventListener("change", (e) => {
   if (e.target.files.length) addImagesFromFiles(e.target.files);
   imageInput.value = "";
+});
+
+let currentAudios = [];
+const MAX_AUDIOS = 3;
+const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
+
+const renderAudioPreviews = () => {
+  if (currentAudios.length === 0 && currentImages.length === 0) {
+    imagePreviewBar.classList.add("hidden");
+    return;
+  }
+  // Remove old audio thumbs (non-image items)
+  previewImagesList.querySelectorAll(".preview-thumb.audio").forEach((el) => el.remove());
+  currentAudios.forEach((dataUrl, idx) => {
+    const thumb = document.createElement("div");
+    thumb.className = "preview-thumb audio";
+    thumb.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "remove-thumb-btn";
+    btn.textContent = "\u00d7";
+    btn.title = "Remove";
+    btn.addEventListener("click", () => {
+      currentAudios.splice(idx, 1);
+      renderImagePreviews();
+      renderAudioPreviews();
+    });
+    thumb.appendChild(btn);
+    previewImagesList.appendChild(thumb);
+  });
+};
+
+const addAudiosFromFiles = (files) => {
+  const remaining = MAX_AUDIOS - currentAudios.length;
+  if (remaining <= 0) {
+    showToast(`Max ${MAX_AUDIOS} audio files allowed.`, "error");
+    return;
+  }
+  const toProcess = Array.from(files).slice(0, remaining);
+  toProcess.forEach((file) => {
+    if (!file.type.startsWith("audio/")) return;
+    if (file.size > MAX_AUDIO_SIZE) {
+      showToast(`"${file.name}" skipped (max 25MB).`, "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentAudios.push(e.target.result);
+      imagePreviewBar.classList.remove("hidden");
+      renderAudioPreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+audioAttachButton.addEventListener("click", () => {
+  audioInput.click();
+});
+
+audioInput.addEventListener("change", (e) => {
+  if (e.target.files.length) addAudiosFromFiles(e.target.files);
+  audioInput.value = "";
 });
 
 const enforceMessageLimits = (value) => {
@@ -346,7 +411,7 @@ const loadStoredCurrent = () => {
 };
 
 const stripImages = (messages) =>
-  messages.map(({ images, ...rest }) => rest);
+  messages.map(({ images, audios, ...rest }) => rest);
 
 const persistState = () => {
   const historyToSave = chatHistory.map((chat) => ({
@@ -427,17 +492,30 @@ const appendMessageToUI = (message) => {
   const bubble = document.createElement("div");
   bubble.className = `message ${message.role}`;
 
-  if (message.images && message.images.length && message.role === "user") {
-    const imagesWrap = document.createElement("div");
-    imagesWrap.className = "message-images";
-    message.images.forEach((src) => {
-      const img = document.createElement("img");
-      img.className = "message-image";
-      img.src = src;
-      img.alt = "Attached image";
-      imagesWrap.appendChild(img);
-    });
-    bubble.appendChild(imagesWrap);
+  if (message.role === "user") {
+    if (message.images && message.images.length) {
+      const imagesWrap = document.createElement("div");
+      imagesWrap.className = "message-images";
+      message.images.forEach((src) => {
+        const img = document.createElement("img");
+        img.className = "message-image";
+        img.src = src;
+        img.alt = "Attached image";
+        imagesWrap.appendChild(img);
+      });
+      bubble.appendChild(imagesWrap);
+    }
+    if (message.audios && message.audios.length) {
+      const audiosWrap = document.createElement("div");
+      audiosWrap.className = "message-audios";
+      message.audios.forEach(() => {
+        const tag = document.createElement("div");
+        tag.className = "message-audio-tag";
+        tag.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg><span>Audio file</span>`;
+        audiosWrap.appendChild(tag);
+      });
+      bubble.appendChild(audiosWrap);
+    }
   }
 
   // Create message content
@@ -736,10 +814,11 @@ const loadChatFromHistory = async (id) => {
   showToast("Chat loaded.", "success");
 };
 
-const addMessageToCurrent = (role, content, images) => {
+const addMessageToCurrent = (role, content, media) => {
   const message = { role, content, timestamp: Date.now() };
-  if (images && images.length) {
-    message.images = images;
+  if (media) {
+    if (media.images && media.images.length) message.images = media.images;
+    if (media.audios && media.audios.length) message.audios = media.audios;
   }
   currentChat.messages.push(message);
   if (!currentChat.titleIsCustom) {
@@ -1186,24 +1265,33 @@ chatForm.addEventListener("submit", async (event) => {
   }
   const message = enforced.trim();
   const hasImages = currentImages.length > 0;
-  if (!message && !hasImages) {
+  const hasAudios = currentAudios.length > 0;
+  const hasMedia = hasImages || hasAudios;
+  if (!message && !hasMedia) {
     return;
   }
   const historyForRequest = currentChat.messages.slice();
-  const displayContent = message || `[Image${currentImages.length > 1 ? "s" : ""} attached]`;
-  addMessageToCurrent("user", displayContent, currentImages.length ? [...currentImages] : null);
+  const parts = [];
+  if (hasImages) parts.push(`${currentImages.length} image${currentImages.length > 1 ? "s" : ""}`);
+  if (hasAudios) parts.push(`${currentAudios.length} audio file${currentAudios.length > 1 ? "s" : ""}`);
+  const displayContent = message || `[${parts.join(", ")} attached]`;
+  const mediaPayload = {};
+  if (hasImages) mediaPayload.images = [...currentImages];
+  if (hasAudios) mediaPayload.audios = [...currentAudios];
+  addMessageToCurrent("user", displayContent, mediaPayload);
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendButton.disabled = true;
 
   const body = { message, history: historyForRequest };
-  if (hasImages) {
-    body.images = [...currentImages];
-  }
+  if (hasImages) body.images = mediaPayload.images;
+  if (hasAudios) body.audios = mediaPayload.audios;
 
   currentImages = [];
+  currentAudios = [];
   renderImagePreviews();
   imageInput.value = "";
+  audioInput.value = "";
 
   try {
     const response = await fetch("/api/message", {

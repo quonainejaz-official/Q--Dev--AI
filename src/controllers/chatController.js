@@ -34,13 +34,16 @@ const normalizeIncomingHistory = (history) => {
 
 const postMessage = async (req, res, next) => {
   const images = req.body?.images;
+  const audios = req.body?.audios;
   const hasImages = Array.isArray(images) && images.length > 0;
+  const hasAudios = Array.isArray(audios) && audios.length > 0;
+  const hasMedia = hasImages || hasAudios;
   const validation = validateMessage(req.body?.message || "");
-  if (!validation.valid && !hasImages) {
+  if (!validation.valid && !hasMedia) {
     return res.status(400).json({ error: validation.error });
   }
 
-  const cleanMessage = hasImages ? sanitizeMessage(validation.value || "") : sanitizeMessage(validation.value);
+  const cleanMessage = hasMedia ? sanitizeMessage(validation.value || "") : sanitizeMessage(validation.value);
 
   res.setHeader("Content-Type", "text/plain");
   res.setHeader("Cache-Control", "no-cache");
@@ -61,11 +64,12 @@ const postMessage = async (req, res, next) => {
         : incomingHistory;
 
     let reply;
-    if (hasImages) {
+    if (hasMedia) {
       reply = await generateVisionReply({
         message: cleanMessage,
         history: historyForModel,
-        images
+        images,
+        audios
       });
     } else {
       reply = await generateReply({
