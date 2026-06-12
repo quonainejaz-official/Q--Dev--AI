@@ -222,7 +222,7 @@ const startRecording = () => {
     if (isRecording && !recordingStoppedIntentionally) {
       const text = messageInput.value.trim();
       if (text) {
-        chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+        submitMessage();
       }
     }
     stopRecordingUI();
@@ -257,7 +257,7 @@ const stopRecording = () => {
   stopRecordingUI();
   const text = messageInput.value.trim();
   if (text) {
-    chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+    submitMessage();
   }
 };
 
@@ -1808,9 +1808,19 @@ messageInput.addEventListener("keydown", (event) => {
   if (event.isComposing || event.keyCode === 229) {
     return;
   }
-  if (event.key === "Enter" && !event.shiftKey) {
+  if (event.key === "Enter") {
     event.preventDefault();
-    chatForm.requestSubmit();
+    if (!event.shiftKey) {
+      submitMessage();
+    } else {
+      const start = messageInput.selectionStart;
+      const end = messageInput.selectionEnd;
+      const val = messageInput.value;
+      messageInput.value = val.substring(0, start) + "\n" + val.substring(end);
+      messageInput.selectionStart = messageInput.selectionEnd = start + 1;
+      messageInput.style.height = "auto";
+      messageInput.style.height = messageInput.scrollHeight + "px";
+    }
   }
 });
 
@@ -1831,8 +1841,12 @@ messageInput.addEventListener("paste", (event) => {
   }
 });
 
-chatForm.addEventListener("submit", async (event) => {
+chatForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  submitMessage();
+});
+
+const submitMessage = async () => {
   const enforced = enforceMessageLimits(messageInput.value);
   if (enforced !== messageInput.value) {
     messageInput.value = enforced;
@@ -1843,11 +1857,8 @@ chatForm.addEventListener("submit", async (event) => {
   const hasVideos = currentVideos.length > 0;
   const hasPdfs = currentPdfs.length > 0;
   const hasMedia = hasImages || hasAudios || hasVideos || hasPdfs;
-  if (!message && !hasMedia) {
-    return;
-  }
+  if (!message && !hasMedia) return;
 
-  // Check for /imagine command or image mode
   const isImagineCmd = message.startsWith(IMG_CMD) && !hasMedia;
   const shouldGenerateImage = isImagineCmd || (isImageMode && !hasMedia);
   if (shouldGenerateImage) {
@@ -1867,7 +1878,6 @@ chatForm.addEventListener("submit", async (event) => {
     }
   }
 
-  // Strip media data URLs from history to keep payload under Vercel's 4.5MB limit
   const historyForRequest = currentChat.messages.map(m => {
     const { images, audios, videos, pdfs, ...rest } = m;
     return rest;
@@ -1937,6 +1947,6 @@ chatForm.addEventListener("submit", async (event) => {
     sendButton.disabled = false;
     messageInput.focus();
   }
-});
+};
 
 initializeMessages();
