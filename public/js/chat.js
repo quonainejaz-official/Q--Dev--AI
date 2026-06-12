@@ -176,6 +176,7 @@ document.addEventListener("click", () => {
 let isRecording = false;
 let recognition = null;
 let recordingStoppedIntentionally = false;
+let pendingTranscript = "";
 
 const recordingIndicator = document.getElementById("recordingIndicator");
 
@@ -196,6 +197,7 @@ const startRecording = () => {
     return;
   }
 
+  pendingTranscript = "";
   recordingStoppedIntentionally = false;
 
   recognition.onresult = (event) => {
@@ -203,6 +205,7 @@ const startRecording = () => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       transcript += event.results[i][0].transcript;
     }
+    pendingTranscript = transcript;
     messageInput.value = transcript;
     messageInput.style.height = "auto";
     messageInput.style.height = messageInput.scrollHeight + "px";
@@ -220,7 +223,7 @@ const startRecording = () => {
 
   recognition.onend = () => {
     if (isRecording && !recordingStoppedIntentionally) {
-      const text = messageInput.value.trim();
+      const text = (pendingTranscript || messageInput.value).trim();
       if (text) {
         submitMessage();
       }
@@ -255,7 +258,7 @@ const stopRecording = () => {
     try { recognition.stop(); } catch (e) { }
   }
   stopRecordingUI();
-  const text = messageInput.value.trim();
+  const text = (pendingTranscript || messageInput.value).trim();
   if (text) {
     submitMessage();
   }
