@@ -48,6 +48,7 @@ body {
 .app-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
@@ -1482,8 +1483,9 @@ body {
   }
 
   .input-container {
-    padding: 10px;
-    margin-bottom: 5px;
+    padding: 8px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    margin-bottom: 0;
   }
 
   .composer {
@@ -1532,23 +1534,43 @@ body {
   }
 
   .composer {
-    padding: 8px 12px;
+    padding: 8px 10px;
     border-radius: 12px;
   }
 
   #messageInput {
     font-size: 14px;
     padding: 2px 0;
+    max-height: 120px;
   }
 
-  .send-btn {
-    width: 32px;
-    height: 32px;
-    padding: 6px;
+  .attach-btn, .send-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .attach-btn svg, .send-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .mic-btn svg {
+    width: 18px;
+    height: 18px;
   }
 
   .input-footer {
     padding-top: 4px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .input-actions-right {
+    gap: 6px;
+  }
+
+  .input-actions-left {
+    flex-shrink: 0;
   }
 
   .typing {
@@ -1567,6 +1589,18 @@ body {
   .new-chat-btn {
     margin-bottom: 16px;
     padding: 8px 12px;
+  }
+
+  .add-menu {
+    bottom: 100%;
+    top: auto;
+    left: 0;
+    margin-bottom: 8px;
+  }
+
+  .image-mode-banner {
+    font-size: 12px;
+    padding: 6px 10px;
   }
 }
 
