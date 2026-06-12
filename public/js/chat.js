@@ -1123,6 +1123,36 @@ messageInput.addEventListener("keydown", (event) => {
   }
 });
 
+messageInput.addEventListener("paste", (event) => {
+  const items = event.clipboardData.items;
+  let imageFile = null;
+
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      imageFile = item.getAsFile();
+      break;
+    }
+  }
+
+  if (imageFile) {
+    event.preventDefault();
+
+    if (imageFile.size > 5 * 1024 * 1024) {
+      showToast("Image must be under 5MB.", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentImageDataUrl = e.target.result;
+      previewImage.src = currentImageDataUrl;
+      previewFilename.textContent = "Pasted image";
+      imagePreviewBar.classList.remove("hidden");
+    };
+    reader.readAsDataURL(imageFile);
+  }
+});
+
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const enforced = enforceMessageLimits(messageInput.value);
