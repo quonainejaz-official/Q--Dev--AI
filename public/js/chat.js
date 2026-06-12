@@ -1721,11 +1721,11 @@ const startStreamEvent = (reader, decoder) => {
             currentChat.messages.push(streamingMsg);
             appendMessageToUI(streamingMsg);
           } else if (msg.type === "chunk" && streamingMsg) {
-            streamingMsg.content += msg.text;
+            streamingMsg.content += decodeHtml(msg.text);
             const lastBubble = messagesContainer.lastElementChild;
             if (lastBubble) {
               const tb = lastBubble.querySelector(".message-text");
-              if (tb) tb.textContent = decodeHtml(streamingMsg.content);
+              if (tb) tb.textContent = streamingMsg.content;
               messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
           } else if (msg.type === "done") {
