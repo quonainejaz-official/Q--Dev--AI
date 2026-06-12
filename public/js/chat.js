@@ -761,6 +761,17 @@ const decodeEntities = (value) => {
   return textarea.value;
 };
 
+const decodeHtml = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'");
+};
+
 const escapeHtml = (value) => {
   if (!value) {
     return "";
@@ -1069,7 +1080,7 @@ const startStreamEvent = (reader, decoder) => {
             const lastBubble = messagesContainer.lastElementChild;
             if (lastBubble) {
               const tb = lastBubble.querySelector(".message-text");
-              if (tb) tb.textContent = streamingMsg.content;
+              if (tb) tb.textContent = decodeHtml(streamingMsg.content);
               messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
           } else if (msg.type === "done") {
