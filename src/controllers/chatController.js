@@ -1,4 +1,5 @@
 const { generateReply } = require("../services/huggingFaceService");
+const { generateVisionReply } = require("../services/opencodeService");
 const {
   MAX_HISTORY_LENGTH,
   validateMessage,
@@ -32,12 +33,13 @@ const normalizeIncomingHistory = (history) => {
 };
 
 const postMessage = async (req, res, next) => {
-  const validation = validateMessage(req.body?.message);
-  if (!validation.valid) {
+  const hasImage = Boolean(req.body?.image);
+  const validation = validateMessage(req.body?.message || "");
+  if (!validation.valid && !hasImage) {
     return res.status(400).json({ error: validation.error });
   }
 
-  const cleanMessage = sanitizeMessage(validation.value);
+  const cleanMessage = hasImage ? sanitizeMessage(validation.value || "") : sanitizeMessage(validation.value);
 
   res.setHeader("Content-Type", "text/plain");
   res.setHeader("Cache-Control", "no-cache");
@@ -57,10 +59,19 @@ const postMessage = async (req, res, next) => {
         ? incomingHistory.slice(0, -1)
         : incomingHistory;
 
-    const reply = await generateReply({
-      message: cleanMessage,
-      history: historyForModel
-    });
+    let reply;
+    if (hasImage) {
+      reply = await generateVisionReply({
+        message: cleanMessage,
+        history: historyForModel,
+        imageDataUrl: req.body.image
+      });
+    } else {
+      reply = await generateReply({
+        message: cleanMessage,
+        history: historyForModel
+      });
+    }
 
     const cleanReply = sanitizeMessage(reply);
     const words = cleanReply.match(/\S+\s*/g) || [];

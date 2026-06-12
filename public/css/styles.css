@@ -685,6 +685,80 @@ body {
   gap: 8px;
 }
 
+/* Image Preview Bar */
+.image-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border-color);
+  animation: fadeIn 0.2s ease;
+}
+
+.image-preview-bar.hidden {
+  display: none;
+}
+
+.image-preview-bar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+}
+
+.preview-filename {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remove-image-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.remove-image-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ef4444;
+}
+
+/* User message image */
+.message.user .message-image {
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 10px;
+  object-fit: cover;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.image-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
 #messageInput {
   background: transparent;
   border: none;
@@ -718,6 +792,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.attach-btn:hover {
+  color: var(--text-primary);
 }
 
 .send-btn {

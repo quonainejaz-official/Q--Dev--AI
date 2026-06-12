@@ -14,6 +14,12 @@ const sidebarToggle = document.querySelector(".sidebar-toggle");
 const sidebarToggleMain = document.querySelector(".sidebar-toggle-main");
 const newChatButtonMain = document.getElementById("newChatButtonMain");
 const sidebarOverlay = document.getElementById("sidebarOverlay");
+const attachButton = document.getElementById("attachButton");
+const imageInput = document.getElementById("imageInput");
+const imagePreviewBar = document.getElementById("imagePreviewBar");
+const previewImage = document.getElementById("previewImage");
+const previewFilename = document.getElementById("previewFilename");
+const removeImageBtn = document.getElementById("removeImageBtn");
 
 const MESSAGE_LIMITS = {
   maxLines: 5000,
@@ -62,6 +68,44 @@ const maybeToastLimit = (key, message) => {
   lastLimitToastKey = key;
   showToast(message, "error");
 };
+
+let currentImageDataUrl = null;
+
+attachButton.addEventListener("click", () => {
+  imageInput.click();
+});
+
+imageInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast("Image must be under 5MB.", "error");
+    imageInput.value = "";
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    showToast("Please select a valid image file.", "error");
+    imageInput.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    currentImageDataUrl = event.target.result;
+    previewImage.src = currentImageDataUrl;
+    previewFilename.textContent = file.name;
+    imagePreviewBar.classList.remove("hidden");
+  };
+  reader.readAsDataURL(file);
+});
+
+removeImageBtn.addEventListener("click", () => {
+  currentImageDataUrl = null;
+  imagePreviewBar.classList.add("hidden");
+  imageInput.value = "";
+});
 
 const enforceMessageLimits = (value) => {
   let next = value;
@@ -279,9 +323,20 @@ const loadStoredCurrent = () => {
   }
 };
 
+const stripImages = (messages) =>
+  messages.map(({ image, ...rest }) => rest);
+
 const persistState = () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory));
-  localStorage.setItem(CURRENT_KEY, JSON.stringify(currentChat));
+  const historyToSave = chatHistory.map((chat) => ({
+    ...chat,
+    messages: stripImages(chat.messages)
+  }));
+  const currentToSave = {
+    ...currentChat,
+    messages: stripImages(currentChat.messages)
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(historyToSave));
+  localStorage.setItem(CURRENT_KEY, JSON.stringify(currentToSave));
 };
 
 const getTitleFromMessages = (messages) => {
@@ -349,7 +404,15 @@ const copyToClipboard = async (text) => {
 const appendMessageToUI = (message) => {
   const bubble = document.createElement("div");
   bubble.className = `message ${message.role}`;
-  
+
+  if (message.image && message.role === "user") {
+    const img = document.createElement("img");
+    img.className = "message-image";
+    img.src = message.image;
+    img.alt = "Attached image";
+    bubble.appendChild(img);
+  }
+
   // Create message content
   const content = buildMessageContent(message.content);
   bubble.appendChild(content);
@@ -646,8 +709,11 @@ const loadChatFromHistory = async (id) => {
   showToast("Chat loaded.", "success");
 };
 
-const addMessageToCurrent = (role, content) => {
+const addMessageToCurrent = (role, content, image) => {
   const message = { role, content, timestamp: Date.now() };
+  if (image) {
+    message.image = image;
+  }
   currentChat.messages.push(message);
   if (!currentChat.titleIsCustom) {
     currentChat.title = getTitleFromMessages(currentChat.messages);
@@ -1064,19 +1130,31 @@ chatForm.addEventListener("submit", async (event) => {
     messageInput.value = enforced;
   }
   const message = enforced.trim();
-  if (!message) {
+  const hasImage = Boolean(currentImageDataUrl);
+  if (!message && !hasImage) {
     return;
   }
-  addMessageToCurrent("user", message);
+  const historyForRequest = currentChat.messages.slice();
+  const displayContent = message || "[Image attached]";
+  addMessageToCurrent("user", displayContent, currentImageDataUrl);
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendButton.disabled = true;
+
+  const body = { message, history: historyForRequest };
+  if (hasImage) {
+    body.image = currentImageDataUrl;
+  }
+
+  currentImageDataUrl = null;
+  imagePreviewBar.classList.add("hidden");
+  imageInput.value = "";
 
   try {
     const response = await fetch("/api/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history: currentChat.messages }),
+      body: JSON.stringify(body),
       credentials: "include"
     });
 

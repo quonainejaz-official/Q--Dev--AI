@@ -80,15 +80,30 @@
         <div class="input-container">
           <form id="chatForm" class="composer" autocomplete="off">
             <div class="input-wrapper">
+              <div id="imagePreviewBar" class="image-preview-bar hidden">
+                <img id="previewImage" src="" alt="Preview" />
+                <span id="previewFilename" class="preview-filename"></span>
+                <button id="removeImageBtn" type="button" class="remove-image-btn" title="Remove image">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
               <textarea
                 id="messageInput"
                 placeholder="Message"
                 maxlength="50000"
                 rows="1"
-                required
               ></textarea>
               <div class="input-footer">
                 <div class="input-actions-right">
+                  <button id="attachButton" type="button" class="attach-btn" title="Attach image">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                  </button>
+                  <input type="file" id="imageInput" accept="image/*" hidden />
                   <button id="sendButton" type="submit" class="send-btn" disabled>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="12" y1="19" x2="12" y2="5"></line>
