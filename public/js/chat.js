@@ -127,11 +127,7 @@ if (imageViewerEditInput) {
 }
 
 let isImageMode = false;
-let isRecording = false;
-let recognition = null;
-let recordingStoppedIntentionally = false;
 
-const recordingIndicator = document.getElementById("recordingIndicator");
 
 const enterImageMode = () => {
   isImageMode = true;
@@ -177,16 +173,30 @@ document.addEventListener("click", () => {
 
 // ----- Speech Recognition -----
 
-const initSpeechRecognition = () => {
+let isRecording = false;
+let recognition = null;
+let recordingStoppedIntentionally = false;
+
+const recordingIndicator = document.getElementById("recordingIndicator");
+
+const createRecognition = () => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR || !micButton) {
+  if (!SR) return null;
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.interimResults = true;
+  rec.continuous = false;
+  return rec;
+};
+
+const startRecording = () => {
+  recognition = createRecognition();
+  if (!recognition) {
     if (micButton) micButton.style.display = "none";
     return;
   }
-  recognition = new SR();
-  recognition.lang = "en-US";
-  recognition.interimResults = true;
-  recognition.continuous = false;
+
+  recordingStoppedIntentionally = false;
 
   recognition.onresult = (event) => {
     let transcript = "";
@@ -195,16 +205,14 @@ const initSpeechRecognition = () => {
     }
     messageInput.value = transcript;
     messageInput.style.height = "auto";
-    messageInput.style.height = `${messageInput.scrollHeight}px`;
+    messageInput.style.height = messageInput.scrollHeight + "px";
     sendButton.disabled = false;
   };
 
   recognition.onerror = (event) => {
     if (event.error === "no-speech") {
-      // No speech detected - just stop quietly
-    } else if (event.error === "aborted") {
-      // User stopped - intentional
-    } else {
+      // quiet
+    } else if (event.error !== "aborted") {
       showToast("Voice input error: " + event.error, "error");
     }
     stopRecordingUI();
@@ -212,14 +220,23 @@ const initSpeechRecognition = () => {
 
   recognition.onend = () => {
     if (isRecording && !recordingStoppedIntentionally) {
-      // Ended naturally (e.g., user stopped speaking) - try to send
       const text = messageInput.value.trim();
       if (text) {
-        chatForm.requestSubmit();
+        chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
       }
     }
     stopRecordingUI();
   };
+
+  try {
+    recognition.start();
+    isRecording = true;
+    micButton.classList.add("recording");
+    micButton.title = "Tap to stop & send";
+    if (recordingIndicator) recordingIndicator.classList.remove("hidden");
+  } catch (e) {
+    // already started — shouldn't happen with a fresh instance
+  }
 };
 
 const stopRecordingUI = () => {
@@ -232,35 +249,19 @@ const stopRecordingUI = () => {
   if (recordingIndicator) recordingIndicator.classList.add("hidden");
 };
 
-const startRecording = () => {
-  if (!recognition) initSpeechRecognition();
-  if (!recognition) return;
-  try {
-    recordingStoppedIntentionally = false;
-    recognition.start();
-    isRecording = true;
-    micButton.classList.add("recording");
-    micButton.title = "Tap to stop & send";
-    if (recordingIndicator) recordingIndicator.classList.remove("hidden");
-  } catch (e) {
-    // already started
-  }
-};
-
 const stopRecording = () => {
   recordingStoppedIntentionally = true;
   if (recognition) {
-    try { recognition.stop(); } catch (e) { /* ignore */ }
+    try { recognition.stop(); } catch (e) { }
   }
   stopRecordingUI();
   const text = messageInput.value.trim();
   if (text) {
-    chatForm.requestSubmit();
+    chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
   }
 };
 
 if (micButton) {
-  initSpeechRecognition();
   micButton.addEventListener("click", () => {
     if (isRecording) {
       stopRecording();
@@ -770,11 +771,11 @@ const stripMedia = (messages) =>
 const persistState = () => {
   const historyToSave = chatHistory.map((chat) => ({
     ...chat,
-    messages: stripMedia(chat.messages)
+    messages: chat.messages
   }));
   const currentToSave = {
     ...currentChat,
-    messages: stripMedia(currentChat.messages)
+    messages: currentChat.messages
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(historyToSave));
   localStorage.setItem(CURRENT_KEY, JSON.stringify(currentToSave));
@@ -793,11 +794,18 @@ const normalizeMessages = (messages) => {
   if (!Array.isArray(messages)) {
     return [];
   }
-  return messages.map((item) => ({
-    role: item?.role === "bot" ? "bot" : "user",
-    content: String(item?.content ?? ""),
-    timestamp: typeof item?.timestamp === "number" ? item.timestamp : Date.now()
-  }));
+  return messages.map((item) => {
+    const msg = {
+      role: item?.role === "bot" ? "bot" : "user",
+      content: String(item?.content ?? ""),
+      timestamp: typeof item?.timestamp === "number" ? item.timestamp : Date.now()
+    };
+    // Preserve media fields for persistence
+    ["images","audios","videos","pdfs","generatedImage","generatedPrompt"].forEach(f => {
+      if (item[f]) msg[f] = item[f];
+    });
+    return msg;
+  });
 };
 
 const normalizeChatEntry = (chat) => {

@@ -1,4 +1,3 @@
-const { generateReply } = require("../services/huggingFaceService");
 const { generateVisionReply } = require("../services/opencodeService");
 const { generateImage } = require("../services/imageGenService");
 const {
@@ -26,7 +25,7 @@ const normalizeIncomingHistory = (history) => {
   return history
     .map((item) => ({
       role: item?.role === "bot" ? "bot" : "user",
-      content: sanitizeMessage(String(item?.content ?? "")),
+      content: String(item?.content ?? ""),
       timestamp: typeof item?.timestamp === "number" ? item.timestamp : Date.now()
     }))
     .filter((item) => item.content.trim().length > 0)
@@ -78,7 +77,7 @@ const postMessage = async (req, res, next) => {
     return res.status(400).json({ error: validation.error });
   }
 
-  const cleanMessage = hasMedia ? sanitizeMessage(validation.value || "") : sanitizeMessage(validation.value);
+  const cleanMessage = hasMedia ? (validation.value || "") : validation.value;
 
   res.setHeader("Content-Type", "text/plain");
   res.setHeader("Cache-Control", "no-cache");
@@ -100,19 +99,9 @@ const postMessage = async (req, res, next) => {
 
     let reply;
     if (hasMedia) {
-      reply = await generateVisionReply({
-        message: cleanMessage,
-        history: historyForModel,
-        images,
-        audios,
-        videos,
-        pdfs
-      });
+      reply = await generateVisionReply({ message: cleanMessage, history: historyForModel, images, audios, videos, pdfs });
     } else {
-      reply = await generateReply({
-        message: cleanMessage,
-        history: historyForModel
-      });
+      reply = await generateVisionReply({ message: cleanMessage, history: historyForModel, images: [], audios: [], videos: [], pdfs: [] });
     }
 
     const cleanReply = sanitizeMessage(reply);

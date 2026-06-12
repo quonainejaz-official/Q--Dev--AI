@@ -1,5 +1,6 @@
 const OPENCODE_API_URL = "https://opencode.ai/zen/v1/chat/completions";
 const VISION_MODEL = "mimo-v2.5-free";
+const pdfParse = require("pdf-parse");
 
 const extractAudioData = (dataUrl) => {
   const match = dataUrl.match(/^data:audio\/(\w+);base64,(.+)$/);
@@ -7,6 +8,24 @@ const extractAudioData = (dataUrl) => {
     return { data: match[2], format: match[1] === "mpeg" ? "mp3" : match[1] };
   }
   return null;
+};
+
+const dataUrlToBuffer = (dataUrl) => {
+  const match = dataUrl.match(/^data:.*;base64,(.+)$/);
+  if (!match) return null;
+  return Buffer.from(match[1], "base64");
+};
+
+const extractPdfText = async (dataUrl) => {
+  try {
+    const buf = dataUrlToBuffer(dataUrl);
+    if (!buf) return null;
+    const result = await pdfParse(buf);
+    const text = result.text?.trim();
+    return text || null;
+  } catch {
+    return null;
+  }
 };
 
 const buildMultimodalMessages = (history, text, images, audios) => {
@@ -66,7 +85,7 @@ const parseReply = (payload) => {
   return payload.choices?.[0]?.message?.content || null;
 };
 
-const buildMultimodalMessagesAll = (history, text, images, audios, videos, pdfs) => {
+const buildMultimodalMessagesAll = async (history, text, images, audios, videos, pdfs) => {
   const msgs = buildMultimodalMessages(history, text, images, audios);
   if (msgs.length === 0) return msgs;
   const lastMsg = msgs[msgs.length - 1];
@@ -78,9 +97,15 @@ const buildMultimodalMessagesAll = (history, text, images, audios, videos, pdfs)
     });
   }
   if (Array.isArray(pdfs)) {
-    pdfs.forEach((dataUrl) => {
-      lastMsg.content.push({ type: "image_url", image_url: { url: dataUrl } });
-    });
+    for (const dataUrl of pdfs) {
+      const pdfText = await extractPdfText(dataUrl);
+      if (pdfText) {
+        lastMsg.content.push({
+          type: "text",
+          text: `[Content extracted from attached PDF]:\n${pdfText}`
+        });
+      }
+    }
   }
   return msgs;
 };
@@ -88,7 +113,7 @@ const buildMultimodalMessagesAll = (history, text, images, audios, videos, pdfs)
 const generateVisionReply = async ({ message, history, images, audios, videos, pdfs }) => {
   const body = JSON.stringify({
     model: VISION_MODEL,
-    messages: buildMultimodalMessagesAll(history, message, images, audios, videos, pdfs)
+    messages: await buildMultimodalMessagesAll(history, message, images, audios, videos, pdfs)
   });
 
   const response = await fetch(OPENCODE_API_URL, {

@@ -17,6 +17,8 @@
     "express-rate-limit": "^7.4.0",
     "express-session": "^1.18.0",
     "morgan": "^1.10.0",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^6.0.227",
     "validator": "^13.12.0"
   },
   "devDependencies": {
@@ -29,5 +31,20 @@
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quonainejaz-official/Q--Dev--AI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/quonainejaz-official/Q--Dev--AI/issues"
+  },
+  "homepage": "https://github.com/quonainejaz-official/Q--Dev--AI#readme"
 }
