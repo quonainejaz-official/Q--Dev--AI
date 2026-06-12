@@ -921,7 +921,7 @@ const initializeMessages = async () => {
   if (!initialMessages.length) {
     addMessageToCurrent(
       "bot",
-      "Hello! I am Q-Dev-AI, your powerful assistant. Ask me anything!"
+      "Hello! I am Q-Dev-AI, your coding assistant. Ask me anything!"
     );
   }
 };
@@ -938,7 +938,7 @@ const handleNewChat = () => {
       persistState();
       addMessageToCurrent(
         "bot",
-        "Hello! I am Q-Dev-AI, your powerful assistant. Ask me anything!"
+        "Hello! I am Q-Dev-AI, your coding assistant. Ask me anything!"
       );
       closeSidebarOnMobile();
       showToast("New chat started.", "success");
