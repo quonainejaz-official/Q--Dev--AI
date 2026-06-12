@@ -1,1173 +1,1327 @@
-(function () {
-  "use strict";
+const messagesContainer = document.getElementById("messages");
+const chatForm = document.getElementById("chatForm");
+const messageInput = document.getElementById("messageInput");
+const sendButton = document.getElementById("sendButton");
+const typingIndicator = document.getElementById("typingIndicator");
+const newChatButton = document.getElementById("newChatButton");
+const chatHistoryList = document.getElementById("chatHistory");
+const welcomeScreen = document.getElementById("welcomeScreen");
+const chatArea = document.getElementById("chatArea");
+const currentChatTitle = document.getElementById("currentChatTitle");
+const editChatTitleBtn = document.getElementById("editChatTitleBtn");
+const appContainer = document.querySelector(".app-container");
+const sidebarToggle = document.querySelector(".sidebar-toggle");
+const sidebarToggleMain = document.querySelector(".sidebar-toggle-main");
+const newChatButtonMain = document.getElementById("newChatButtonMain");
+const sidebarOverlay = document.getElementById("sidebarOverlay");
+const attachButton = document.getElementById("attachButton");
+const imageInput = document.getElementById("imageInput");
+const imagePreviewBar = document.getElementById("imagePreviewBar");
+const previewImagesList = document.getElementById("previewImagesList");
+const audioAttachButton = document.getElementById("audioAttachButton");
+const audioInput = document.getElementById("audioInput");
 
-  // ----- State -----
-  const state = {
-    messages: [],
-    currentChatId: null,
-    chats: {},
-    currentAttachments: [],
-    isStreaming: false,
-    isGeneratingImage: false,
-    initialized: false,
-    MAX_ATTACHMENTS: 5,
-    MAX_FILE_SIZE: 25 * 1024 * 1024,
-    MAX_IMAGE_SIZE: 5 * 1024 * 1024,
-    allowedImageTypes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
-    allowedAudioTypes: ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/webm"],
-    allowedVideoTypes: ["video/mp4", "video/webm"],
-    allowedPdfTypes: ["application/pdf"]
-  };
+const MESSAGE_LIMITS = {
+  maxLines: 5000,
+  maxChars: 50000,
+  maxWords: 50000,
+  maxTextareaHeightPx: 200
+};
 
-  // ----- DOM refs -----
-  const $ = (id) => document.getElementById(id);
+let lastLimitToastAt = 0;
+let lastLimitToastKey = "";
 
-  const chatForm = $("chatForm");
-  const messageInput = $("messageInput");
-  const sendButton = $("sendButton");
-  const messagesEl = $("messages");
-  const chatArea = $("chatArea");
-  const welcomeScreen = $("welcomeScreen");
-  const attachmentPreviewBar = $("attachmentPreviewBar");
-  const previewAttachmentsList = $("previewAttachmentsList");
-  const fileInput = $("fileInput");
-  const attachButton = $("attachButton");
-  const typingIndicator = $("typingIndicator");
-  const newChatButton = $("newChatButton");
-  const newChatButtonMain = $("newChatButtonMain");
-  const sidebarOverlay = $("sidebarOverlay");
-  const currentChatTitle = $("currentChatTitle");
-  const editChatTitleBtn = $("editChatTitleBtn");
-  const exportPdfBtn = $("exportPdfBtn");
-  const imageGenBtn = $("imageGenBtn");
-  const imageGenPanel = $("imageGenPanel");
-  const imageGenPrompt = $("imageGenPrompt");
-  const imageGenSubmitBtn = $("imageGenSubmitBtn");
-  const imageGenCloseBtn = $("imageGenCloseBtn");
+const countLines = (text) => {
+  if (!text) return 0;
+  return text.split(/\r\n|\r|\n/).length;
+};
 
-  // ----- Utilities -----
-  function showElement(el) { el.classList.remove("hidden"); }
-  function hideElement(el) { el.classList.add("hidden"); }
+const countWords = (text) => {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  const matches = trimmed.match(/\S+/g);
+  return matches ? matches.length : 0;
+};
 
-  function showToast(msg, type) {
-    const container = $("toastContainer");
-    const toast = document.createElement("div");
-    toast.className = "toast" + (type ? " " + type : "");
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(() => {
-      toast.style.animation = "toastOut 0.3s ease forwards";
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
+const sliceToMaxWords = (text, maxWords) => {
+  if (!text) return text;
+  const re = /\S+/g;
+  let match;
+  let count = 0;
+  let endIndex = 0;
+  while ((match = re.exec(text)) !== null) {
+    count += 1;
+    if (count === maxWords) {
+      endIndex = re.lastIndex;
+      break;
+    }
+  }
+  return endIndex ? text.slice(0, endIndex) : text;
+};
+
+const maybeToastLimit = (key, message) => {
+  const now = Date.now();
+  if (now - lastLimitToastAt < 1200 && lastLimitToastKey === key) {
+    return;
+  }
+  lastLimitToastAt = now;
+  lastLimitToastKey = key;
+  showToast(message, "error");
+};
+
+let currentImages = [];
+const MAX_IMAGES = 5;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const renderImagePreviews = () => {
+  previewImagesList.innerHTML = "";
+  if (currentImages.length === 0 && currentAudios.length === 0) {
+    imagePreviewBar.classList.add("hidden");
+    return;
+  }
+  imagePreviewBar.classList.remove("hidden");
+  currentImages.forEach((dataUrl, idx) => {
+    const thumb = document.createElement("div");
+    thumb.className = "preview-thumb";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = `Image ${idx + 1}`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "remove-thumb-btn";
+    btn.textContent = "\u00d7";
+    btn.title = "Remove";
+    btn.addEventListener("click", () => {
+      currentImages.splice(idx, 1);
+      renderImagePreviews();
+    });
+    thumb.append(img, btn);
+    previewImagesList.appendChild(thumb);
+  });
+  renderAudioPreviews();
+};
+
+const addImagesFromFiles = (files) => {
+  const remaining = MAX_IMAGES - currentImages.length;
+  if (remaining <= 0) {
+    showToast(`Max ${MAX_IMAGES} images allowed.`, "error");
+    return;
+  }
+  const toProcess = Array.from(files).slice(0, remaining);
+  toProcess.forEach((file) => {
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast(`"${file.name}" skipped (max 5MB).`, "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentImages.push(e.target.result);
+      renderImagePreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+attachButton.addEventListener("click", () => {
+  imageInput.click();
+});
+
+imageInput.addEventListener("change", (e) => {
+  if (e.target.files.length) addImagesFromFiles(e.target.files);
+  imageInput.value = "";
+});
+
+let currentAudios = [];
+const MAX_AUDIOS = 3;
+const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
+
+const renderAudioPreviews = () => {
+  if (currentAudios.length === 0 && currentImages.length === 0) {
+    imagePreviewBar.classList.add("hidden");
+    return;
+  }
+  // Remove old audio thumbs (non-image items)
+  previewImagesList.querySelectorAll(".preview-thumb.audio").forEach((el) => el.remove());
+  currentAudios.forEach((dataUrl, idx) => {
+    const thumb = document.createElement("div");
+    thumb.className = "preview-thumb audio";
+    thumb.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "remove-thumb-btn";
+    btn.textContent = "\u00d7";
+    btn.title = "Remove";
+    btn.addEventListener("click", () => {
+      currentAudios.splice(idx, 1);
+      renderImagePreviews();
+      renderAudioPreviews();
+    });
+    thumb.appendChild(btn);
+    previewImagesList.appendChild(thumb);
+  });
+};
+
+const addAudiosFromFiles = (files) => {
+  const remaining = MAX_AUDIOS - currentAudios.length;
+  if (remaining <= 0) {
+    showToast(`Max ${MAX_AUDIOS} audio files allowed.`, "error");
+    return;
+  }
+  const toProcess = Array.from(files).slice(0, remaining);
+  toProcess.forEach((file) => {
+    if (!file.type.startsWith("audio/")) return;
+    if (file.size > MAX_AUDIO_SIZE) {
+      showToast(`"${file.name}" skipped (max 25MB).`, "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentAudios.push(e.target.result);
+      imagePreviewBar.classList.remove("hidden");
+      renderAudioPreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+audioAttachButton.addEventListener("click", () => {
+  audioInput.click();
+});
+
+audioInput.addEventListener("change", (e) => {
+  if (e.target.files.length) addAudiosFromFiles(e.target.files);
+  audioInput.value = "";
+});
+
+const enforceMessageLimits = (value) => {
+  let next = value;
+
+  if (next.length > MESSAGE_LIMITS.maxChars) {
+    next = next.slice(0, MESSAGE_LIMITS.maxChars);
+    maybeToastLimit(
+      "chars",
+      `Message too long. Max ${MESSAGE_LIMITS.maxChars.toLocaleString()} characters.`
+    );
   }
 
-  function decodeHtml(str) {
-    const textarea = document.createElement("textarea");
-    textarea.innerHTML = str;
-    return textarea.value;
+  const lines = countLines(next);
+  if (lines > MESSAGE_LIMITS.maxLines) {
+    next = next
+      .split(/\r\n|\r|\n/)
+      .slice(0, MESSAGE_LIMITS.maxLines)
+      .join("\n");
+    maybeToastLimit(
+      "lines",
+      `Too many lines. Max ${MESSAGE_LIMITS.maxLines.toLocaleString()} lines.`
+    );
   }
 
-  function escHtml(str) {
-    const div = document.createElement("div");
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+  const words = countWords(next);
+  if (words > MESSAGE_LIMITS.maxWords) {
+    next = sliceToMaxWords(next, MESSAGE_LIMITS.maxWords);
+    maybeToastLimit(
+      "words",
+      `Too many words. Max ${MESSAGE_LIMITS.maxWords.toLocaleString()} words.`
+    );
   }
 
-  function getFileType(file) {
-    if (state.allowedImageTypes.includes(file.type)) return "image";
-    if (state.allowedAudioTypes.includes(file.type)) return "audio";
-    if (state.allowedVideoTypes.includes(file.type)) return "video";
-    if (state.allowedPdfTypes.includes(file.type)) return "pdf";
+  return next;
+};
+
+const renderWordmark = (containerId, isLarge = false) => {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const logoWrapper = document.createElement("div");
+  logoWrapper.className = `wordmark-wrapper ${isLarge ? "large" : ""}`;
+
+  // SVG Icon
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "wordmark-icon");
+  
+  // Outer circle (The Q)
+  const circle = document.createElementNS(svgNS, "circle");
+  circle.setAttribute("cx", "12");
+  circle.setAttribute("cy", "12");
+  circle.setAttribute("r", "9");
+  circle.setAttribute("stroke", "currentColor");
+  circle.setAttribute("stroke-width", "2.5");
+  circle.setAttribute("fill", "none");
+
+  // The Q slash
+  const line = document.createElementNS(svgNS, "line");
+  line.setAttribute("x1", "18");
+  line.setAttribute("y1", "18");
+  line.setAttribute("x2", "22");
+  line.setAttribute("y2", "22");
+  line.setAttribute("stroke", "currentColor");
+  line.setAttribute("stroke-width", "2.5");
+  line.setAttribute("stroke-linecap", "round");
+
+  // Inner dot (Representing Dev/AI core)
+  const dot = document.createElementNS(svgNS, "circle");
+  dot.setAttribute("cx", "12");
+  dot.setAttribute("cy", "12");
+  dot.setAttribute("r", "3");
+  dot.setAttribute("fill", "var(--accent-blue)");
+
+  svg.appendChild(circle);
+  svg.appendChild(line);
+  svg.appendChild(dot);
+
+  // Text Wordmark
+  const text = document.createElement("div");
+  text.className = "wordmark-text";
+  text.innerHTML = '<span class="q-letter">Q</span><span class="dev-part">-Dev</span><span class="ai-part">-AI</span>';
+
+  logoWrapper.appendChild(svg);
+  logoWrapper.appendChild(text);
+  container.innerHTML = ""; // Clear existing
+  container.appendChild(logoWrapper);
+};
+
+// Initialize logos
+renderWordmark("sidebarLogo");
+renderWordmark("welcomeLogo", true);
+
+const SIDEBAR_COLLAPSED_KEY = "qai-sidebar-collapsed";
+
+const toggleSidebar = () => {
+  const isCollapsed = appContainer.classList.toggle("sidebar-collapsed");
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed);
+  
+  // Handle mobile overlay
+  if (window.innerWidth <= 768) {
+    if (isCollapsed) {
+      sidebarOverlay.classList.remove("active");
+    } else {
+      sidebarOverlay.classList.add("active");
+    }
+  }
+};
+
+const closeSidebarOnMobile = () => {
+  if (window.innerWidth <= 768) {
+    appContainer.classList.add("sidebar-collapsed");
+    sidebarOverlay.classList.remove("active");
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "true");
+  }
+};
+
+sidebarToggle.addEventListener("click", toggleSidebar);
+sidebarToggleMain.addEventListener("click", toggleSidebar);
+sidebarOverlay.addEventListener("click", closeSidebarOnMobile);
+
+const loadSidebarState = () => {
+  let isCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+  
+  // Default to collapsed on mobile if no preference
+  if (isCollapsed === null && window.innerWidth <= 768) {
+    isCollapsed = "true";
+  } else {
+    isCollapsed = isCollapsed === "true";
+  }
+
+  if (isCollapsed) {
+    appContainer.classList.add("sidebar-collapsed");
+    sidebarOverlay.classList.remove("active");
+  } else if (window.innerWidth <= 768) {
+    sidebarOverlay.classList.add("active");
+  }
+};
+
+loadSidebarState();
+
+const customModal = document.getElementById("customModal");
+const modalTitle = document.getElementById("modalTitle");
+const modalMessage = document.getElementById("modalMessage");
+const modalCancel = document.getElementById("modalCancel");
+const modalConfirm = document.getElementById("modalConfirm");
+const toastContainer = document.getElementById("toastContainer");
+
+let modalCallback = null;
+
+const showModal = (title, message, callback) => {
+  modalTitle.textContent = title;
+  modalMessage.textContent = message;
+  modalCallback = callback;
+  customModal.classList.remove("hidden");
+};
+
+const hideModal = () => {
+  customModal.classList.add("hidden");
+  modalCallback = null;
+};
+
+modalCancel.addEventListener("click", hideModal);
+modalConfirm.addEventListener("click", () => {
+  if (modalCallback) modalCallback();
+  hideModal();
+});
+
+const showToast = (message, type = "success") => {
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = "toastOut 0.3s forwards";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+};
+
+const STORAGE_KEY = "qai-chat-history";
+const CURRENT_KEY = "qai-current-chat";
+
+const generateId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const createChat = (messages = [], id = generateId(), title = "New Chat") => ({
+  id,
+  title,
+  titleIsCustom: false,
+  messages
+});
+
+let chatHistory = [];
+let currentChat = createChat();
+
+const loadStoredHistory = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    chatHistory = Array.isArray(parsed) ? parsed.map((entry) => normalizeChatEntry(entry)) : [];
+  } catch (error) {
+    chatHistory = [];
+  }
+};
+
+const loadStoredCurrent = () => {
+  try {
+    const stored = localStorage.getItem(CURRENT_KEY);
+    const parsed = stored ? JSON.parse(stored) : null;
+    return parsed ? normalizeChatEntry(parsed) : null;
+  } catch (error) {
     return null;
   }
+};
 
-  function getFileSizeLimit(type) {
-    return type === "image" ? state.MAX_IMAGE_SIZE : state.MAX_FILE_SIZE;
+const stripImages = (messages) =>
+  messages.map(({ images, audios, ...rest }) => rest);
+
+const persistState = () => {
+  const historyToSave = chatHistory.map((chat) => ({
+    ...chat,
+    messages: stripImages(chat.messages)
+  }));
+  const currentToSave = {
+    ...currentChat,
+    messages: stripImages(currentChat.messages)
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(historyToSave));
+  localStorage.setItem(CURRENT_KEY, JSON.stringify(currentToSave));
+};
+
+const getTitleFromMessages = (messages) => {
+  const firstUser = messages.find((item) => item.role === "user");
+  const base = firstUser?.content?.trim() || "New Chat";
+  if (base.length <= 32) {
+    return base;
   }
+  return `${base.slice(0, 32)}...`;
+};
 
-  function getIconSvg(type) {
-    const svgs = {
-      image: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
-      audio: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
-      video: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
-      pdf: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>'
-    };
-    return svgs[type] || "";
+const normalizeMessages = (messages) => {
+  if (!Array.isArray(messages)) {
+    return [];
   }
+  return messages.map((item) => ({
+    role: item?.role === "bot" ? "bot" : "user",
+    content: String(item?.content ?? ""),
+    timestamp: typeof item?.timestamp === "number" ? item.timestamp : Date.now()
+  }));
+};
 
-  function truncateFilename(name, max) {
-    if (name.length <= max) return name;
-    const ext = name.lastIndexOf(".");
-    if (ext > 0) {
-      return name.slice(0, max - (name.length - ext) - 3) + "..." + name.slice(ext);
-    }
-    return name.slice(0, max - 3) + "...";
-  }
+const normalizeChatEntry = (chat) => {
+  const messages = normalizeMessages(chat?.messages);
+  const derivedTitle = getTitleFromMessages(messages);
+  const rawTitle =
+    typeof chat?.title === "string" ? chat.title.trim() : "";
+  const title = rawTitle || derivedTitle;
+  const titleIsCustom =
+    typeof chat?.titleIsCustom === "boolean"
+      ? chat.titleIsCustom
+      : Boolean(rawTitle && rawTitle !== derivedTitle);
 
-  // ----- Read file as DataUrl -----
-  function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
-  }
+  return {
+    id: typeof chat?.id === "string" && chat.id ? chat.id : generateId(),
+    title: titleIsCustom ? title : derivedTitle,
+    titleIsCustom,
+    messages
+  };
+};
 
-  // ----- Attachment management -----
-  function getAttachmentsCount() {
-    return state.currentAttachments.length;
-  }
-
-  async function addAttachment(file) {
-    const type = getFileType(file);
-    if (!type) {
-      showToast("Unsupported file type: " + file.type, "error");
-      return;
-    }
-
-    if (getAttachmentsCount() >= state.MAX_ATTACHMENTS) {
-      showToast("Maximum " + state.MAX_ATTACHMENTS + " files allowed", "error");
-      return;
-    }
-
-    const sizeLimit = getFileSizeLimit(type);
-    if (file.size > sizeLimit) {
-      const mb = sizeLimit / (1024 * 1024);
-      showToast("File too large. Max " + mb + "MB for " + type + " files", "error");
-      return;
-    }
-
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    // Fallback for older browsers
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      state.currentAttachments.push({ type, dataUrl, name: file.name });
-      renderAttachmentPreview();
-      enableDisableSend();
-    } catch (err) {
-      showToast("Failed to read file", "error");
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      return true;
+    } catch (fallbackErr) {
+      console.error("Failed to copy text: ", fallbackErr);
+      return false;
     }
   }
+};
 
-  function removeAttachment(index) {
-    state.currentAttachments.splice(index, 1);
-    renderAttachmentPreview();
-    enableDisableSend();
-  }
+const appendMessageToUI = (message) => {
+  const bubble = document.createElement("div");
+  bubble.className = `message ${message.role}`;
 
-  function renderAttachmentPreview() {
-    const attachments = state.currentAttachments;
-    if (attachments.length === 0) {
-      hideElement(attachmentPreviewBar);
-      return;
-    }
-    showElement(attachmentPreviewBar);
-    previewAttachmentsList.innerHTML = "";
-
-    attachments.forEach((att, index) => {
-      const wrapper = document.createElement("div");
-      wrapper.className = "preview-thumb";
-
-      if (att.type === "image") {
+  if (message.role === "user") {
+    if (message.images && message.images.length) {
+      const imagesWrap = document.createElement("div");
+      imagesWrap.className = "message-images";
+      message.images.forEach((src) => {
         const img = document.createElement("img");
-        img.src = att.dataUrl;
-        img.alt = att.name || "Image";
-        wrapper.appendChild(img);
-      } else {
-        wrapper.classList.add("media-icon");
-        wrapper.innerHTML = getIconSvg(att.type);
-        const label = document.createElement("div");
-        label.className = "media-filename";
-        label.textContent = truncateFilename(att.name || att.type, 12);
-        wrapper.appendChild(label);
-      }
-
-      const removeBtn = document.createElement("button");
-      removeBtn.className = "remove-thumb-btn";
-      removeBtn.innerHTML = "&times;";
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        removeAttachment(index);
+        img.className = "message-image";
+        img.src = src;
+        img.alt = "Attached image";
+        imagesWrap.appendChild(img);
       });
-      wrapper.appendChild(removeBtn);
-      previewAttachmentsList.appendChild(wrapper);
+      bubble.appendChild(imagesWrap);
+    }
+    if (message.audios && message.audios.length) {
+      const audiosWrap = document.createElement("div");
+      audiosWrap.className = "message-audios";
+      message.audios.forEach(() => {
+        const tag = document.createElement("div");
+        tag.className = "message-audio-tag";
+        tag.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg><span>Audio file</span>`;
+        audiosWrap.appendChild(tag);
+      });
+      bubble.appendChild(audiosWrap);
+    }
+  }
+
+  // Create message content
+  const content = buildMessageContent(message.content);
+  bubble.appendChild(content);
+  
+  // Create actions container
+  const actions = document.createElement("div");
+  actions.className = "message-actions";
+  
+  // Copy button
+  const copyButton = document.createElement("button");
+  copyButton.className = "message-action-btn copy-btn";
+  copyButton.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  </svg>`;
+  copyButton.title = "Copy message";
+  
+  copyButton.addEventListener("click", async () => {
+    const success = await copyToClipboard(message.content);
+    if (success) {
+      copyButton.classList.add("copied");
+      copyButton.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>`;
+      copyButton.title = "Copied!";
+      
+      setTimeout(() => {
+        copyButton.classList.remove("copied");
+        copyButton.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>`;
+        copyButton.title = "Copy message";
+      }, 2000);
+    } else {
+      showToast("Failed to copy message", "error");
+    }
+  });
+
+  // Edit button
+  const editButton = document.createElement("button");
+  editButton.className = "message-action-btn edit-btn";
+  editButton.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+  </svg>`;
+  editButton.title = "Edit message";
+  
+  editButton.addEventListener("click", () => {
+    messageInput.value = message.content;
+    messageInput.focus();
+    // Auto-resize textarea
+    messageInput.style.height = 'auto';
+    messageInput.style.height = messageInput.scrollHeight + 'px';
+  });
+  
+  actions.appendChild(copyButton);
+  actions.appendChild(editButton);
+  bubble.appendChild(actions);
+  
+  messagesContainer.appendChild(bubble);
+  
+  // Show chat area and hide welcome screen when messages are present
+  if (currentChat.messages.length > 0) {
+    welcomeScreen.classList.add("hidden");
+    chatArea.classList.remove("hidden");
+  } else {
+    welcomeScreen.classList.remove("hidden");
+    chatArea.classList.add("hidden");
+  }
+};
+
+const renderMessages = (messages) => {
+  messagesContainer.innerHTML = "";
+  if (messages && messages.length > 0) {
+    messages.forEach((message) => appendMessageToUI(message));
+    welcomeScreen.classList.add("hidden");
+    chatArea.classList.remove("hidden");
+  } else {
+    welcomeScreen.classList.remove("hidden");
+    chatArea.classList.add("hidden");
+  }
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+};
+
+const renderHistoryList = () => {
+  chatHistoryList.innerHTML = "";
+  chatHistory.forEach((chat) => {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    if (chat.id === currentChat.id) {
+      item.classList.add("active");
+    }
+
+    const titleContainer = document.createElement("div");
+    titleContainer.className = "history-title-container";
+
+    const title = document.createElement("span");
+    title.className = "history-title";
+    title.textContent = chat.title || "New Chat";
+
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "history-action-btn edit-history-btn";
+    editButton.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+    </svg>`;
+    
+    editButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const input = document.createElement("input");
+      input.className = "history-title-input";
+      input.value = chat.title || "New Chat";
+      
+      const saveTitle = () => {
+        const newTitle = input.value.trim() || "New Chat";
+        chat.title = newTitle;
+        chat.titleIsCustom = true;
+        if (chat.id === currentChat.id) {
+          currentChat.title = newTitle;
+          currentChat.titleIsCustom = true;
+          if (currentChatTitle) currentChatTitle.textContent = newTitle;
+        }
+        persistState();
+        renderHistoryList();
+      };
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveTitle();
+        if (e.key === "Escape") renderHistoryList();
+      });
+      
+      input.addEventListener("blur", saveTitle);
+      
+      titleContainer.replaceChild(input, title);
+      input.focus();
+      input.select();
+      editButton.style.display = "none";
     });
 
-    const countLabel = document.createElement("span");
-    countLabel.className = "attachment-count-label";
-    countLabel.textContent = attachments.length + "/" + state.MAX_ATTACHMENTS;
-    previewAttachmentsList.appendChild(countLabel);
-  }
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "history-action-btn delete-history-btn";
+    deleteButton.textContent = "✕";
 
-  function resetAttachments() {
-    state.currentAttachments = [];
-    renderAttachmentPreview();
-    fileInput.value = "";
-  }
-
-  function enableDisableSend() {
-    const hasText = messageInput.value.trim().length > 0;
-    const hasAttachments = getAttachmentsCount() > 0;
-    sendButton.disabled = !(hasText || hasAttachments);
-  }
-
-  // ----- Rich text formatting for bot messages -----
-  function formatText(text) {
-    let result = escHtml(text);
-
-    // Inline code (must be before bold/italic)
-    result = result.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-    // Strikethrough ~~text~~
-    result = result.replace(/~~([^~]+)~~/g, "<s>$1</s>");
-
-    // Bold **text**
-    result = result.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-
-    // Italic *text*
-    result = result.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-
-    return result;
-  }
-
-  function highlightCode(code) {
-    const patterns = [
-      { re: /\b(if|else|for|while|do|return|function|const|let|var|class|import|export|from|async|await|try|catch|throw|new|this|typeof|instanceof|switch|case|break|continue|in|of|yield|static|get|set|extends|super|delete|void|with|default)\b/g, cls: "token-keyword" },
-      { re: /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, cls: "token-string" },
-      { re: /\b(\d+\.?\d*)\b/g, cls: "token-number" },
-      { re: /(\/\/.*$|\/\*[\s\S]*?\*\/)/gm, cls: "token-comment" },
-      { re: /([\(\)\[\]\{\}])/g, cls: "token-bracket" },
-      { re: /([=+\-*/<>&|!?:;.,~^%]+)/g, cls: "token-operator" },
-      { re: /\b([a-zA-Z_$][\w$]*)\s*(?=\()/g, cls: "token-function" }
-    ];
-
-    let highlighted = escHtml(code);
-    patterns.forEach(({ re, cls }) => {
-      highlighted = highlighted.replace(re, (match) => {
-        return `<span class="${cls}">${match}</span>`;
-      });
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      showModal(
+        "Delete Chat",
+        "Delete this chat history? This cannot be undone.",
+        () => deleteHistory(chat.id)
+      );
     });
-    return highlighted;
+
+    titleContainer.append(title, editButton);
+    item.addEventListener("click", () => loadChatFromHistory(chat.id));
+    item.append(titleContainer, deleteButton);
+    chatHistoryList.appendChild(item);
+  });
+};
+
+const handleEditChatTitle = () => {
+  const currentTitle = currentChat.title || "New Chat";
+  const input = document.createElement("input");
+  input.className = "chat-title-input";
+  input.value = currentTitle;
+
+  const saveTitle = () => {
+    const newTitle = input.value.trim() || "New Chat";
+    currentChat.title = newTitle;
+    currentChat.titleIsCustom = true;
+    
+    // Update in history too
+    const index = chatHistory.findIndex(c => c.id === currentChat.id);
+    if (index !== -1) {
+      chatHistory[index].title = newTitle;
+      chatHistory[index].titleIsCustom = true;
+    }
+    
+    if (currentChatTitle) {
+      currentChatTitle.textContent = newTitle;
+      currentChatTitle.style.display = "block";
+    }
+    editChatTitleBtn.style.display = "flex";
+    input.remove();
+    persistState();
+    renderHistoryList();
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveTitle();
+    if (e.key === "Escape") {
+      if (currentChatTitle) {
+        currentChatTitle.style.display = "block";
+      }
+      editChatTitleBtn.style.display = "flex";
+      input.remove();
+    }
+  });
+
+  input.addEventListener("blur", saveTitle);
+
+  currentChatTitle.style.display = "none";
+  editChatTitleBtn.style.display = "none";
+  currentChatTitle.parentNode.insertBefore(input, currentChatTitle.nextSibling);
+  input.focus();
+  input.select();
+};
+
+if (editChatTitleBtn) {
+  editChatTitleBtn.addEventListener("click", handleEditChatTitle);
+}
+
+const deleteHistory = (id) => {
+  chatHistory = chatHistory.filter((chat) => chat.id !== id);
+  persistState();
+  renderHistoryList();
+  showToast("Chat history deleted.", "success");
+};
+
+const syncCurrentChatToHistoryIfExists = () => {
+  const index = chatHistory.findIndex((chat) => chat.id === currentChat.id);
+  if (index >= 0) {
+    const derivedTitle = getTitleFromMessages(currentChat.messages);
+    const title = currentChat.titleIsCustom ? currentChat.title : derivedTitle;
+    chatHistory[index] = {
+      ...currentChat,
+      title,
+      titleIsCustom: Boolean(currentChat.titleIsCustom)
+    };
+    persistState();
+    renderHistoryList();
+  }
+};
+
+const storeCurrentInHistory = () => {
+  if (!currentChat.messages.length) {
+    return;
+  }
+  const derivedTitle = getTitleFromMessages(currentChat.messages);
+  const title = currentChat.titleIsCustom ? currentChat.title : derivedTitle;
+  const entry = {
+    ...currentChat,
+    title,
+    titleIsCustom: Boolean(currentChat.titleIsCustom)
+  };
+  const index = chatHistory.findIndex((chat) => chat.id === entry.id);
+  if (index >= 0) {
+    chatHistory[index] = entry;
+  } else {
+    chatHistory.unshift(entry);
+  }
+  persistState();
+  renderHistoryList();
+};
+
+const ensureCurrentInHistory = () => {
+  if (!currentChat.messages.length) {
+    return;
+  }
+  const index = chatHistory.findIndex((chat) => chat.id === currentChat.id);
+  if (index === -1) {
+    const derivedTitle = getTitleFromMessages(currentChat.messages);
+    const title = currentChat.titleIsCustom ? currentChat.title : derivedTitle;
+    chatHistory.unshift({
+      ...currentChat,
+      title,
+      titleIsCustom: Boolean(currentChat.titleIsCustom)
+    });
+    persistState();
+  }
+};
+
+const setCurrentChat = (chat) => {
+  currentChat = normalizeChatEntry(chat);
+  if (currentChatTitle) {
+    currentChatTitle.textContent = currentChat.title;
+  }
+  persistState();
+  renderMessages(currentChat.messages);
+  renderHistoryList();
+};
+
+const loadChatFromHistory = async (id) => {
+  const chat = chatHistory.find((entry) => entry.id === id);
+  if (!chat) {
+    showToast("Chat not found.", "error");
+    return;
+  }
+  storeCurrentInHistory();
+  setCurrentChat(chat);
+  closeSidebarOnMobile();
+  showToast("Chat loaded.", "success");
+};
+
+const addMessageToCurrent = (role, content, media) => {
+  const message = { role, content, timestamp: Date.now() };
+  if (media) {
+    if (media.images && media.images.length) message.images = media.images;
+    if (media.audios && media.audios.length) message.audios = media.audios;
+  }
+  currentChat.messages.push(message);
+  if (!currentChat.titleIsCustom) {
+    currentChat.title = getTitleFromMessages(currentChat.messages);
+    if (currentChatTitle) {
+      currentChatTitle.textContent = currentChat.title;
+    }
+  }
+  appendMessageToUI(message);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  syncCurrentChatToHistoryIfExists();
+  persistState();
+};
+
+const decodeEntities = (value) => {
+  if (!value) return "";
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = value;
+  return textarea.value;
+};
+
+const decodeHtml = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'");
+};
+
+const escapeHtml = (value) => {
+  if (!value) {
+    return "";
+  }
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+};
+
+const highlightCode = (value) => {
+  const keywords = [
+    "await", "break", "case", "catch", "class", "const", "continue", "debugger",
+    "default", "delete", "do", "else", "export", "extends", "false", "finally",
+    "for", "function", "if", "import", "in", "instanceof", "let", "new", "null",
+    "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var",
+    "void", "while", "with", "yield", "async", "from", "as", "interface", "type",
+    "enum", "public", "private", "protected", "static", "readonly"
+  ];
+  const keywordPattern = `\\b(?:${keywords.join("|")})\\b`;
+  
+  const tokenRegex = new RegExp(
+    [
+      `("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|\\\`(?:\\\\.|[^\\\`\\\\])*\\\`)`, // Strings
+      "(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)", // Comments
+      "(\\b\\d+(?:\\.\\d+)?\\b)", // Numbers
+      `(${keywordPattern})`, // Keywords
+      "(\\b[A-Za-z_$][\\w$]*\\b)(?=\\s*\\()", // Function calls
+      "([()[\\]{}])", // Brackets
+      "([\\+\\-\\*\\/\\=%&\\|\\^!<>\\?~\\:]+)" // Operators
+    ].join("|"),
+    "g"
+  );
+
+  let html = "";
+  let lastIndex = 0;
+  let match;
+
+  while ((match = tokenRegex.exec(value)) !== null) {
+    // Add text before the match
+    html += escapeHtml(value.substring(lastIndex, match.index));
+
+    const [full, str, comm, num, keyw, func, brack, oper] = match;
+    let type = "";
+    if (str) type = "string";
+    else if (comm) type = "comment";
+    else if (num) type = "number";
+    else if (keyw) type = "keyword";
+    else if (func) type = "function";
+    else if (brack) type = "bracket";
+    else if (oper) type = "operator";
+
+    if (type) {
+      html += `<span class="token-${type}">${escapeHtml(full)}</span>`;
+    } else {
+      html += escapeHtml(full);
+    }
+    lastIndex = tokenRegex.lastIndex;
   }
 
-  function buildMessageContent(segment) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "message-content";
+  html += escapeHtml(value.substring(lastIndex));
+  return html;
+};
 
-    // Check for code blocks
-    const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
-    let lastIndex = 0;
-    let match;
-    let hasContent = false;
+const formatText = (text) => {
+  // 1. Inline Code: `text` -> <code>text</code>
+  text = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+  
+  // 2. Bold: **text** -> <strong>text</strong>
+  text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  
+  // 3. Italic: *text* -> <em>text</em>
+  text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-    while ((match = codeBlockRegex.exec(segment)) !== null) {
-      hasContent = true;
-      const beforeCode = segment.slice(lastIndex, match.index);
-      if (beforeCode.trim()) {
-        processTextBlock(wrapper, beforeCode);
-      }
+  return text;
+};
 
-      const language = match[1] || "plaintext";
-      const codeText = match[2];
+const buildMessageContent = (content) => {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-content";
+  const decoded = decodeEntities(content);
+  const segments = decoded.split(/```/);
 
+  segments.forEach((segment, index) => {
+    if (!segment) return;
+
+    if (index % 2 === 1) {
+      // Code block
       const container = document.createElement("div");
       container.className = "code-block-container";
 
+      let language = "code";
+      let codeText = segment;
+      const newlineIndex = segment.indexOf("\n");
+      if (newlineIndex !== -1) {
+        language = segment.slice(0, newlineIndex).trim() || "code";
+        codeText = segment.slice(newlineIndex + 1);
+      }
+
+      // Header
       const header = document.createElement("div");
       header.className = "code-block-header";
-
+      
       const langLabel = document.createElement("span");
       langLabel.className = "code-lang";
       langLabel.textContent = language;
 
       const copyBtn = document.createElement("button");
       copyBtn.className = "code-copy-btn";
-      copyBtn.textContent = "Copy";
-      copyBtn.addEventListener("click", () => {
-        navigator.clipboard.writeText(codeText).then(() => {
-          copyBtn.textContent = "Copied!";
+      copyBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        <span>Copy</span>
+      `;
+
+      copyBtn.addEventListener("click", async () => {
+        const success = await copyToClipboard(codeText.trim());
+        if (success) {
+          const originalHTML = copyBtn.innerHTML;
+          copyBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Copied!</span>
+          `;
           copyBtn.classList.add("success");
           setTimeout(() => {
-            copyBtn.textContent = "Copy";
+            copyBtn.innerHTML = originalHTML;
             copyBtn.classList.remove("success");
           }, 2000);
-        });
+        }
       });
 
       header.appendChild(langLabel);
       header.appendChild(copyBtn);
 
+      // Pre/Code
       const pre = document.createElement("pre");
       const code = document.createElement("code");
       code.dataset.language = language;
       const trimmedCode = codeText.replace(/\n$/, "");
       code.innerHTML = highlightCode(trimmedCode);
-
+      
       pre.appendChild(code);
       container.appendChild(header);
       container.appendChild(pre);
       wrapper.appendChild(container);
-
-      lastIndex = match.index + match[0].length;
+      return;
     }
 
-    const remaining = segment.slice(lastIndex);
-    if (remaining.trim()) {
-      hasContent = true;
-      processTextBlock(wrapper, remaining);
-    }
-
-    if (!hasContent) {
-      processTextBlock(wrapper, segment);
-    }
-
-    return wrapper;
-  }
-
-  function processTextBlock(container, segment) {
+    // Process normal text segments with Markdown support
     const textBlock = document.createElement("div");
     textBlock.className = "message-text";
-
+    
+    // Split into lines for block-level Markdown
     const lines = segment.split("\n");
     let currentList = null;
-    let inTable = false;
     let htmlContent = "";
 
-    // Process table rows
-    function flushTable() {
-      if (inTable) {
-        htmlContent += "</tbody></table>";
-        inTable = false;
-      }
-    }
-
-    function closeList() {
-      if (currentList) {
-        htmlContent += "</" + currentList + ">";
-        currentList = null;
-      }
-    }
-
-    lines.forEach((line) => {
+    lines.forEach(line => {
       const trimmedLine = line.trim();
-
-      // Empty line
-      if (!trimmedLine) {
-        flushTable();
-        closeList();
-        return;
-      }
-
-      // Horizontal rule ---, ***, ___
-      if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmedLine)) {
-        flushTable();
-        closeList();
-        htmlContent += "<hr>";
-        return;
-      }
-
-      // Table row: | col1 | col2 |
-      if (/^\|.+\|$/.test(trimmedLine)) {
-        closeList();
-        const cells = trimmedLine.split("|").slice(1, -1).map((c) => c.trim());
-        // Check if it's a separator row: |---|---|
-        if (cells.every((c) => /^-+\s*:?$/.test(c))) return;
-        if (!inTable) {
-          htmlContent += "<table><thead><tr>";
-          cells.forEach((c) => { htmlContent += "<th>" + formatText(c) + "</th>"; });
-          htmlContent += "</tr></thead><tbody>";
-          inTable = true;
-        } else {
-          htmlContent += "<tr>";
-          cells.forEach((c) => { htmlContent += "<td>" + formatText(c) + "</td>"; });
-          htmlContent += "</tr>";
-        }
-        return;
-      }
-
-      flushTable();
-
-      // Blockquote: > text
-      if (/^>\s/.test(trimmedLine)) {
-        closeList();
-        const quoteContent = trimmedLine.replace(/^>\s*/, "");
-        htmlContent += "<blockquote><p>" + formatText(quoteContent) + "</p></blockquote>";
-        return;
-      }
-
-      // Header: ### Title
+      
+      // 1. Headers (### Header)
       if (trimmedLine.startsWith("### ")) {
-        closeList();
-        htmlContent += '<h3 class="msg-h3">' + formatText(trimmedLine.slice(4)) + "</h3>";
-        return;
-      }
-
-      // Numbered list
-      if (/^\d+\.\s/.test(trimmedLine)) {
-        flushTable();
+        if (currentList) {
+          htmlContent += `</${currentList}>`;
+          currentList = null;
+        }
+        htmlContent += `<h3 class="msg-h3">${formatText(trimmedLine.slice(4))}</h3>`;
+      } 
+      // 2. Numbered Lists (1. Item)
+      else if (/^\d+\.\s/.test(trimmedLine)) {
         if (currentList !== "ol") {
-          closeList();
+          if (currentList) htmlContent += `</${currentList}>`;
           htmlContent += "<ol>";
           currentList = "ol";
         }
-        htmlContent += "<li>" + formatText(trimmedLine.replace(/^\d+\.\s/, "")) + "</li>";
-        return;
+        htmlContent += `<li>${formatText(trimmedLine.replace(/^\d+\.\s/, ""))}</li>`;
       }
-
-      // Bullet list
-      if (/^[\-\*]\s/.test(trimmedLine)) {
-        flushTable();
+      // 3. Bullet Lists (- Item or * Item)
+      else if (/^[\-\*]\s/.test(trimmedLine)) {
         if (currentList !== "ul") {
-          closeList();
+          if (currentList) htmlContent += `</${currentList}>`;
           htmlContent += "<ul>";
           currentList = "ul";
         }
-        htmlContent += "<li>" + formatText(trimmedLine.slice(2)) + "</li>";
-        return;
+        htmlContent += `<li>${formatText(trimmedLine.slice(2))}</li>`;
       }
-
-      // Regular paragraph
-      closeList();
-      htmlContent += "<p>" + formatText(trimmedLine) + "</p>";
+      // 4. Regular Paragraphs
+      else if (trimmedLine) {
+        if (currentList) {
+          htmlContent += `</${currentList}>`;
+          currentList = null;
+        }
+        htmlContent += `<p>${formatText(trimmedLine)}</p>`;
+      }
+      // 5. Empty Lines
+      else {
+        if (currentList) {
+          htmlContent += `</${currentList}>`;
+          currentList = null;
+        }
+      }
     });
 
-    flushTable();
-    closeList();
-
+    if (currentList) htmlContent += `</${currentList}>`;
+    
     textBlock.innerHTML = htmlContent || segment;
-    container.appendChild(textBlock);
+    wrapper.appendChild(textBlock);
+  });
+
+  if (!wrapper.childNodes.length) {
+    const textBlock = document.createElement("div");
+    textBlock.className = "message-text";
+    textBlock.textContent = decoded;
+    wrapper.appendChild(textBlock);
   }
 
-  // ----- Message append -----
-  function appendUserMessage(text, attachments) {
-    const msgDiv = document.createElement("div");
-    msgDiv.className = "message user";
+  return wrapper;
+};
 
-    const contentDiv = document.createElement("div");
-    contentDiv.className = "message-content";
+const setTyping = (active) => {
+  typingIndicator.classList.toggle("hidden", !active);
+  if (active) {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+};
 
-    if (Array.isArray(attachments) && attachments.length > 0) {
-      const attDiv = document.createElement("div");
-      attDiv.className = "message-attachments";
+const initializeMessages = async () => {
+  loadStoredHistory();
+  const storedCurrent = loadStoredCurrent();
+  const serverMessages = normalizeMessages(window.__INITIAL_MESSAGES__ || []);
+  const storedMessages = normalizeMessages(storedCurrent?.messages || []);
+  const initialMessages = storedMessages.length ? storedMessages : serverMessages;
 
-      attachments.forEach((att) => {
-        if (att.type === "image") {
-          if (att.dataUrl && att.dataUrl.startsWith("data:image/")) {
-            const img = document.createElement("img");
-            img.className = "message-attachment-image";
-            img.src = att.dataUrl;
-            img.alt = att.name || "Image";
-            attDiv.appendChild(img);
-          } else {
-            const tag = document.createElement("div");
-            tag.className = "message-attachment-tag";
-            tag.innerHTML = getIconSvg("image") + "<span>Image</span>";
-            attDiv.appendChild(tag);
-          }
-        } else {
-          const tag = document.createElement("div");
-          tag.className = "message-attachment-tag";
-          tag.innerHTML = getIconSvg(att.type) + '<span>' + (att.name || att.type) + '</span>';
-          attDiv.appendChild(tag);
-        }
-      });
-      contentDiv.appendChild(attDiv);
+  currentChat = normalizeChatEntry({
+    id: storedCurrent?.id,
+    title: storedCurrent?.title,
+    titleIsCustom: storedCurrent?.titleIsCustom,
+    messages: initialMessages
+  });
+
+  ensureCurrentInHistory();
+  renderMessages(initialMessages);
+  renderHistoryList();
+  persistState();
+  if (!initialMessages.length) {
+    addMessageToCurrent(
+      "bot",
+      "Hello! I am Q-Dev-AI, your coding assistant. Ask me anything!"
+    );
+  }
+};
+
+const handleNewChat = () => {
+  showModal(
+    "New Chat",
+    "Start a new chat? Your current chat will be saved to history.",
+    async () => {
+      storeCurrentInHistory();
+      currentChat = createChat();
+      renderMessages([]);
+      renderHistoryList();
+      persistState();
+      addMessageToCurrent(
+        "bot",
+        "Hello! I am Q-Dev-AI, your coding assistant. Ask me anything!"
+      );
+      closeSidebarOnMobile();
+      showToast("New chat started.", "success");
     }
+  );
+};
 
-    if (text.trim()) {
-      const textEl = document.createElement("div");
-      textEl.className = "message-text";
-      textEl.textContent = text;
-      contentDiv.appendChild(textEl);
-    }
+newChatButton.addEventListener("click", handleNewChat);
+if (newChatButtonMain) {
+  newChatButtonMain.addEventListener("click", handleNewChat);
+}
 
-    msgDiv.appendChild(contentDiv);
-    messagesEl.appendChild(msgDiv);
-    scrollToBottom();
-  }
+const startStreamEvent = (reader, decoder) => {
+  let buffer = "";
+  let streamingMsg = null;
 
-  function appendBotMessage(content) {
-    const msgDiv = document.createElement("div");
-    msgDiv.className = "message bot";
-
-    const contentEl = buildMessageContent(content);
-
-    const actionsDiv = document.createElement("div");
-    actionsDiv.className = "message-actions";
-
-    const copyBtn = document.createElement("button");
-    copyBtn.className = "message-action-btn";
-    copyBtn.title = "Copy";
-    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(content).then(() => {
-        copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
-        copyBtn.classList.add("copied");
-        setTimeout(() => {
-          copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-          copyBtn.classList.remove("copied");
-        }, 2000);
-      });
-    });
-
-    actionsDiv.appendChild(copyBtn);
-    contentEl.appendChild(actionsDiv);
-    msgDiv.appendChild(contentEl);
-    messagesEl.appendChild(msgDiv);
-    scrollToBottom();
-
-    // Highlight code blocks
-    msgDiv.querySelectorAll("pre code").forEach((block) => {
-      hljs && hljs.highlightElement(block);
-    });
-  }
-
-  function scrollToBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  // ----- Typing -----
-  function setTyping(active) {
-    if (active) showElement(typingIndicator);
-    else hideElement(typingIndicator);
-    scrollToBottom();
-  }
-
-  // ----- Streaming message -----
-  let currentBotMsg = null;
-  let currentBotContentEl = null;
-  let currentBotText = "";
-
-  function startStream() {
-    state.isStreaming = true;
-    currentBotText = "";
-
-    const msgDiv = document.createElement("div");
-    msgDiv.className = "message bot";
-    currentBotContentEl = buildMessageContent("");
-    msgDiv.appendChild(currentBotContentEl);
-    messagesEl.appendChild(msgDiv);
-
-    // Actions
-    const actionsDiv = document.createElement("div");
-    actionsDiv.className = "message-actions";
-    const copyBtn = document.createElement("button");
-    copyBtn.className = "message-action-btn";
-    copyBtn.title = "Copy";
-    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(currentBotText).then(() => {
-        copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
-        copyBtn.classList.add("copied");
-        setTimeout(() => {
-          copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-          copyBtn.classList.remove("copied");
-        }, 2000);
-      });
-    });
-    actionsDiv.appendChild(copyBtn);
-    currentBotContentEl.appendChild(actionsDiv);
-
-    scrollToBottom();
-  }
-
-  function addChunk(text) {
-    if (!currentBotContentEl) return;
-    currentBotText += text;
-    const decoded = decodeHtml(currentBotText);
-    const newContent = buildMessageContent(decoded);
-    currentBotContentEl.replaceWith(newContent);
-    currentBotContentEl = newContent;
-    scrollToBottom();
-  }
-
-  function endStream() {
-    state.isStreaming = false;
-    currentBotMsg = null;
-    currentBotContentEl = null;
-    currentBotText = "";
-    saveMessageToHistory();
-  }
-
-  // ----- Save to localStorage history -----
-  function saveMessageToHistory() {
-    if (!state.currentChatId) return;
-    const chat = state.chats[state.currentChatId];
-    if (!chat) return;
-
-    const msgs = messagesEl.querySelectorAll(".message");
-    const newMessages = [];
-    msgs.forEach((m) => {
-      if (m.classList.contains("user")) {
-        const textEl = m.querySelector(".message-text");
-        const text = textEl ? textEl.textContent : "";
-        const attEls = m.querySelectorAll(".message-attachment-image, .message-attachment-tag");
-        const attachments = [];
-        attEls.forEach((att) => {
-          if (att.tagName === "IMG") attachments.push({ type: "image", name: "Image" });
-          else {
-            const span = att.querySelector("span");
-            attachments.push({ type: "audio", name: span ? span.textContent : "file" });
-          }
-        });
-        newMessages.push({ role: "user", text, attachments });
-      } else if (m.classList.contains("bot")) {
-        const allText = Array.from(m.querySelectorAll(".message-text")).map((t) => t.textContent).join("\n");
-        newMessages.push({ role: "bot", text: allText });
-      }
-    });
-    chat.messages = newMessages;
-    chat.timestamp = Date.now();
-    persistChats();
-  }
-
-  function persistChats() {
-    try {
-      localStorage.setItem("qdevai_chats", JSON.stringify(state.chats));
-      localStorage.setItem("qdevai_active_chat", JSON.stringify(state.currentChatId));
-    } catch (e) {
-      // storage full
-    }
-  }
-
-  // ----- Chat history management -----
-  function loadChats() {
-    try {
-      const saved = localStorage.getItem("qdevai_chats");
-      state.chats = saved ? JSON.parse(saved) : {};
-      const active = localStorage.getItem("qdevai_active_chat");
-      state.currentChatId = active ? JSON.parse(active) : null;
-    } catch (e) {
-      state.chats = {};
-      state.currentChatId = null;
-    }
-  }
-
-  // ----- Image generation -----
-  async function generateImage(prompt) {
-    if (state.isGeneratingImage) return;
-    state.isGeneratingImage = true;
-    imageGenSubmitBtn.disabled = true;
-    imageGenSubmitBtn.textContent = "Generating...";
-
-    try {
-      const response = await fetch("/api/generate-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt })
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Generation failed");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
+  return {
+    readNext: async () => {
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           if (!line.trim()) continue;
-          try {
-            const data = JSON.parse(line);
-            if (data.type === "image") {
-              // Append as bot message with the generated image
-              appendGeneratedImageResult(data.dataUrl, data.prompt || prompt);
-              hideImageGenPanel();
-            } else if (data.type === "error") {
-              showToast(data.message || "Generation failed", "error");
+          const msg = JSON.parse(line);
+
+          if (msg.type === "typing") {
+            setTyping(msg.active);
+          } else if (msg.type === "start") {
+            streamingMsg = { role: "bot", content: "", timestamp: Date.now() };
+            currentChat.messages.push(streamingMsg);
+            appendMessageToUI(streamingMsg);
+          } else if (msg.type === "chunk" && streamingMsg) {
+            streamingMsg.content += msg.text;
+            const lastBubble = messagesContainer.lastElementChild;
+            if (lastBubble) {
+              const tb = lastBubble.querySelector(".message-text");
+              if (tb) tb.textContent = decodeHtml(streamingMsg.content);
+              messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
-          } catch (e) {
-            // partial line
+          } else if (msg.type === "done") {
+            if (streamingMsg) {
+              const lastBubble = messagesContainer.lastElementChild;
+              if (lastBubble) {
+                const wrapper = lastBubble.querySelector(".message-content");
+                if (wrapper) {
+                  const rebuilt = buildMessageContent(streamingMsg.content);
+                  wrapper.innerHTML = "";
+                  while (rebuilt.firstChild) {
+                    wrapper.appendChild(rebuilt.firstChild);
+                  }
+                }
+              }
+              if (!currentChat.titleIsCustom) {
+                currentChat.title = getTitleFromMessages(currentChat.messages);
+                if (currentChatTitle) currentChatTitle.textContent = currentChat.title;
+              }
+              syncCurrentChatToHistoryIfExists();
+              persistState();
+              streamingMsg = null;
+            }
+            return "done";
+          } else if (msg.type === "error") {
+            if (streamingMsg) {
+              const idx = currentChat.messages.indexOf(streamingMsg);
+              if (idx !== -1) currentChat.messages.splice(idx, 1);
+              if (messagesContainer.lastElementChild?.classList.contains("message")) {
+                messagesContainer.lastElementChild.remove();
+              }
+              streamingMsg = null;
+            }
+            addMessageToCurrent("bot", msg.message || "Something went wrong.");
+            return "error";
           }
         }
-      }
-    } catch (err) {
-      showToast(err.message || "Image generation failed", "error");
-    } finally {
-      state.isGeneratingImage = false;
-      imageGenSubmitBtn.disabled = false;
-      imageGenSubmitBtn.textContent = "Generate";
-    }
-  }
 
-  function appendGeneratedImageResult(dataUrl, prompt) {
-    const msgDiv = document.createElement("div");
-    msgDiv.className = "message bot";
-
-    const contentDiv = document.createElement("div");
-    contentDiv.className = "message-content";
-
-    const textEl = document.createElement("p");
-    textEl.className = "message-text";
-    textEl.style.padding = "0 0 8px 0";
-    textEl.textContent = 'Generated image: "' + prompt + '"';
-    contentDiv.appendChild(textEl);
-
-    const imgContainer = document.createElement("div");
-    imgContainer.style.textAlign = "center";
-    const img = document.createElement("img");
-    img.src = dataUrl;
-    img.alt = prompt;
-    img.style.maxWidth = "100%";
-    img.style.maxHeight = "400px";
-    img.style.borderRadius = "12px";
-    img.style.border = "1px solid var(--border-color)";
-    imgContainer.appendChild(img);
-    contentDiv.appendChild(imgContainer);
-
-    msgDiv.appendChild(contentDiv);
-    messagesEl.appendChild(msgDiv);
-    scrollToBottom();
-    saveMessageToHistory();
-  }
-
-  function showImageGenPanel() {
-    showElement(imageGenPanel);
-    imageGenPrompt.value = "";
-    imageGenPrompt.focus();
-    imageGenSubmitBtn.disabled = false;
-    imageGenSubmitBtn.textContent = "Generate";
-  }
-
-  function hideImageGenPanel() {
-    hideElement(imageGenPanel);
-    imageGenPrompt.value = "";
-  }
-
-  // ----- PDF Export -----
-  function exportChatAsPdf() {
-    window.print();
-  }
-
-  // ----- Send message -----
-  async function sendMessage(text, attachments) {
-    if (state.isStreaming) return;
-
-    const hasText = text.trim().length > 0;
-    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-
-    if (!hasText && !hasAttachments) return;
-
-    // Show chat area
-    hideElement(welcomeScreen);
-    showElement(chatArea);
-    if (!state.currentChatId) createNewChat();
-
-    // Append user message
-    appendUserMessage(text, attachments);
-
-    // Reset input
-    messageInput.value = "";
-    resetAttachments();
-    enableDisableSend();
-    setTyping(true);
-    startStream();
-
-    try {
-      const response = await fetch("/api/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          attachments: attachments || [],
-          history: buildHistoryPayload()
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Request failed");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) return "done";
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const data = JSON.parse(line);
-            if (data.type === "typing") {
-              setTyping(data.active);
-            } else if (data.type === "start") {
-              // already started
-            } else if (data.type === "chunk") {
-              addChunk(data.text);
-            } else if (data.type === "done") {
-              setTyping(false);
-              endStream();
-            } else if (data.type === "error") {
-              setTyping(false);
-              showToast(data.message || "An error occurred", "error");
-              endStream();
-            }
-          } catch (e) {
-            // partial JSON line
-          }
-        }
       }
-    } catch (err) {
-      setTyping(false);
-      showToast("Network error. Please try again.", "error");
-      endStream();
-    }
-  }
-
-  function buildHistoryPayload() {
-    if (!state.chats[state.currentChatId]) return [];
-    const msgs = state.chats[state.currentChatId].messages || [];
-    const payload = [];
-    msgs.forEach((m) => {
-      if (m.role === "user" || m.role === "bot") {
-        payload.push({
-          role: m.role === "bot" ? "assistant" : "user",
-          content: m.text || ""
-        });
-      }
-    });
-    return payload;
-  }
-
-  function createNewChat() {
-    state.currentChatId = "chat_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-    state.chats[state.currentChatId] = { title: "New Chat", messages: [], timestamp: Date.now() };
-    currentChatTitle.textContent = "New Chat";
-    persistChats();
-    renderHistory();
-  }
-
-  // ----- History rendering -----
-  function renderHistory() {
-    const historyList = document.getElementById("chatHistory");
-    if (!historyList) return;
-    historyList.innerHTML = "";
-
-    const sorted = Object.entries(state.chats).sort((a, b) => b[1].timestamp - a[1].timestamp);
-    sorted.forEach(([id, chat]) => {
-      const item = document.createElement("div");
-      item.className = "history-item" + (id === state.currentChatId ? " active" : "");
-
-      const titleContainer = document.createElement("div");
-      titleContainer.className = "history-title-container";
-
-      const title = document.createElement("span");
-      title.className = "history-title";
-      title.textContent = chat.title || "New Chat";
-      titleContainer.appendChild(title);
-      item.appendChild(titleContainer);
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "history-action-btn delete-history-btn";
-      deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-      deleteBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        delete state.chats[id];
-        if (state.currentChatId === id) {
-          state.currentChatId = null;
-          clearChatUI();
-        }
-        persistChats();
-        renderHistory();
-      });
-      item.appendChild(deleteBtn);
-
-      item.addEventListener("click", () => switchToChat(id));
-      historyList.appendChild(item);
-    });
-  }
-
-  function switchToChat(id) {
-    if (state.isStreaming) return;
-    state.currentChatId = id;
-    persistChats();
-    renderChat();
-    renderHistory();
-    hideElement(welcomeScreen);
-    showElement(chatArea);
-  }
-
-  function renderChat() {
-    messagesEl.innerHTML = "";
-    const chat = state.chats[state.currentChatId];
-    if (!chat) return;
-
-    currentChatTitle.textContent = chat.title || "Chat";
-
-    (chat.messages || []).forEach((m) => {
-      if (m.role === "user") {
-        appendUserMessage(m.text || "", m.attachments || []);
-      } else if (m.role === "bot") {
-        const content = m.text || "";
-        const msgDiv = document.createElement("div");
-        msgDiv.className = "message bot";
-        const contentEl = buildMessageContent(content);
-
-        const actionsDiv = document.createElement("div");
-        actionsDiv.className = "message-actions";
-        const copyBtn = document.createElement("button");
-        copyBtn.className = "message-action-btn";
-        copyBtn.title = "Copy";
-        copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-        copyBtn.addEventListener("click", () => {
-          navigator.clipboard.writeText(content).then(() => {
-            copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
-            copyBtn.classList.add("copied");
-            setTimeout(() => {
-              copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-              copyBtn.classList.remove("copied");
-            }, 2000);
-          });
-        });
-        actionsDiv.appendChild(copyBtn);
-        contentEl.appendChild(actionsDiv);
-
-        msgDiv.appendChild(contentEl);
-        messagesEl.appendChild(msgDiv);
-      }
-    });
-
-    scrollToBottom();
-  }
-
-  function clearChatUI() {
-    messagesEl.innerHTML = "";
-    showElement(welcomeScreen);
-    hideElement(chatArea);
-    currentChatTitle.textContent = "New Chat";
-    hideImageGenPanel();
-    resetAttachments();
-  }
-
-  // ----- Event Handlers -----
-  // Form submit
-  chatForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    if (state.isStreaming) return;
-    const text = messageInput.value;
-    const attachments = state.currentAttachments.slice();
-    if (!text.trim() && attachments.length === 0) return;
-    sendMessage(text, attachments);
-  });
-
-  // Input
-  messageInput.addEventListener("input", enableDisableSend);
-
-  // File input
-  attachButton.addEventListener("click", () => fileInput.click());
-
-  fileInput.addEventListener("change", async () => {
-    const files = Array.from(fileInput.files);
-    for (const file of files) {
-      await addAttachment(file);
-    }
-    fileInput.value = "";
-  });
-
-  // Paste handler (images from clipboard)
-  document.addEventListener("paste", async (e) => {
-    const items = e.clipboardData && e.clipboardData.items;
-    if (!items) return;
-
-    let hasImage = false;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.startsWith("image/")) {
-        e.preventDefault();
-        hasImage = true;
-        const file = item.getAsFile();
-        if (file) {
-          await addAttachment(file);
-        }
-      }
-    }
-  });
-
-  // Textarea auto-resize
-  messageInput.addEventListener("input", () => {
-    messageInput.style.height = "auto";
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + "px";
-  });
-
-  // Enter to send (Shift+Enter for newline)
-  messageInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      chatForm.dispatchEvent(new Event("submit"));
-    }
-  });
-
-  // New chat
-  newChatButton.addEventListener("click", () => {
-    if (state.isStreaming) return;
-    clearChatUI();
-    createNewChat();
-  });
-  newChatButtonMain.addEventListener("click", () => {
-    if (state.isStreaming) return;
-    clearChatUI();
-    createNewChat();
-  });
-
-  // Sidebar toggle
-  document.querySelectorAll(".sidebar-toggle, .sidebar-toggle-main").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelector(".app-container").classList.toggle("sidebar-collapsed");
-      sidebarOverlay.classList.toggle("active");
-    });
-  });
-  sidebarOverlay.addEventListener("click", () => {
-    document.querySelector(".app-container").classList.add("sidebar-collapsed");
-    sidebarOverlay.classList.remove("active");
-  });
-
-  // Edit title
-  editChatTitleBtn.addEventListener("click", () => {
-    const current = currentChatTitle.textContent;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "chat-title-input";
-    input.value = current;
-    currentChatTitle.replaceWith(input);
-    input.focus();
-    input.select();
-
-    const finish = () => {
-      const newTitle = input.value.trim() || current;
-      const titleEl = document.createElement("h2");
-      titleEl.id = "currentChatTitle";
-      titleEl.className = "chat-title";
-      titleEl.textContent = newTitle;
-      input.replaceWith(titleEl);
-      if (state.currentChatId && state.chats[state.currentChatId]) {
-        state.chats[state.currentChatId].title = newTitle;
-        persistChats();
-        renderHistory();
-      }
-    };
-
-    input.addEventListener("blur", finish);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-    });
-  });
-
-  // Export PDF
-  exportPdfBtn.addEventListener("click", exportChatAsPdf);
-
-  // Image generation
-  imageGenBtn.addEventListener("click", () => {
-    if (imageGenPanel.classList.contains("hidden")) {
-      showImageGenPanel();
-    } else {
-      hideImageGenPanel();
-    }
-  });
-
-  imageGenCloseBtn.addEventListener("click", hideImageGenPanel);
-
-  imageGenSubmitBtn.addEventListener("click", () => {
-    const prompt = imageGenPrompt.value.trim();
-    if (!prompt) return;
-    hideElement(welcomeScreen);
-    showElement(chatArea);
-    generateImage(prompt);
-  });
-
-  imageGenPrompt.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      imageGenSubmitBtn.click();
-    }
-  });
-
-  // Clicking outside image gen panel to close
-  document.addEventListener("click", (e) => {
-    if (!imageGenPanel.classList.contains("hidden") &&
-        !imageGenPanel.contains(e.target) &&
-        e.target !== imageGenBtn &&
-        !imageGenBtn.contains(e.target)) {
-      hideImageGenPanel();
-    }
-  });
-
-  // ----- Init -----
-  function init() {
-    if (state.initialized) return;
-    state.initialized = true;
-
-    loadChats();
-    renderHistory();
-
-    const msgs = window.__INITIAL_MESSAGES__ || [];
-    if (msgs.length > 0 || state.currentChatId) {
-      if (state.currentChatId) {
-        renderChat();
-      }
-      hideElement(welcomeScreen);
-      showElement(chatArea);
-    }
-
-    enableDisableSend();
-    messageInput.focus();
-  }
-
-  // ----- Override stripImages for localStorage compatibility -----
-  // Legacy: strip image/audio data URLs from serialized messages
-  function stripAttachments(obj) {
-    if (!obj || typeof obj !== "object") return obj;
-    if (Array.isArray(obj)) {
-      return obj.map(stripAttachments);
-    }
-    const stripped = {};
-    for (const key of Object.keys(obj)) {
-      if (key === "dataUrl" && typeof obj[key] === "string" && obj[key].startsWith("data:")) {
-        stripped[key] = obj[key].startsWith("data:image/") ? obj[key] : "";
-      } else if (key === "attachments" && Array.isArray(obj[key])) {
-        stripped[key] = obj[key].map((att) => {
-          if (att.type === "image" && att.dataUrl && att.dataUrl.startsWith("data:")) {
-            return { ...att, dataUrl: att.dataUrl };
-          }
-          return { ...att, dataUrl: "" };
-        });
-      } else if (typeof obj[key] === "object") {
-        stripped[key] = stripAttachments(obj[key]);
-      } else {
-        stripped[key] = obj[key];
-      }
-    }
-    return stripped;
-  }
-
-  // Patch persistChats to strip large data URLs from localStorage
-  const origPersist = persistChats;
-  persistChats = function () {
-    try {
-      const stripped = stripAttachments(state.chats);
-      localStorage.setItem("qdevai_chats", JSON.stringify(stripped));
-      localStorage.setItem("qdevai_active_chat", JSON.stringify(state.currentChatId));
-    } catch (e) {
-      // storage full or serialization error
     }
   };
+};
 
-  // DOM ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
+messageInput.addEventListener("input", () => {
+  const prev = messageInput.value;
+  const next = enforceMessageLimits(prev);
+  if (next !== prev) {
+    const cursor = messageInput.selectionStart ?? next.length;
+    const delta = prev.length - next.length;
+    messageInput.value = next;
+    const nextCursor = Math.max(0, cursor - Math.max(0, delta));
+    messageInput.setSelectionRange(nextCursor, nextCursor);
   }
-})();
+
+  messageInput.style.height = "auto";
+  const targetHeight = Math.min(
+    messageInput.scrollHeight,
+    MESSAGE_LIMITS.maxTextareaHeightPx
+  );
+  messageInput.style.height = `${targetHeight}px`;
+  messageInput.style.overflowY =
+    messageInput.scrollHeight > MESSAGE_LIMITS.maxTextareaHeightPx
+      ? "auto"
+      : "hidden";
+  sendButton.disabled = !messageInput.value.trim();
+});
+
+messageInput.addEventListener("keydown", (event) => {
+  if (event.isComposing || event.keyCode === 229) {
+    return;
+  }
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    chatForm.requestSubmit();
+  }
+});
+
+messageInput.addEventListener("paste", (event) => {
+  const items = event.clipboardData.items;
+  const images = [];
+
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) images.push(file);
+    }
+  }
+
+  if (images.length) {
+    event.preventDefault();
+    addImagesFromFiles(images);
+  }
+});
+
+chatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const enforced = enforceMessageLimits(messageInput.value);
+  if (enforced !== messageInput.value) {
+    messageInput.value = enforced;
+  }
+  const message = enforced.trim();
+  const hasImages = currentImages.length > 0;
+  const hasAudios = currentAudios.length > 0;
+  const hasMedia = hasImages || hasAudios;
+  if (!message && !hasMedia) {
+    return;
+  }
+  const historyForRequest = currentChat.messages.slice();
+  const parts = [];
+  if (hasImages) parts.push(`${currentImages.length} image${currentImages.length > 1 ? "s" : ""}`);
+  if (hasAudios) parts.push(`${currentAudios.length} audio file${currentAudios.length > 1 ? "s" : ""}`);
+  const displayContent = message || `[${parts.join(", ")} attached]`;
+  const mediaPayload = {};
+  if (hasImages) mediaPayload.images = [...currentImages];
+  if (hasAudios) mediaPayload.audios = [...currentAudios];
+  addMessageToCurrent("user", displayContent, mediaPayload);
+  messageInput.value = "";
+  messageInput.style.height = "auto";
+  sendButton.disabled = true;
+
+  const body = { message, history: historyForRequest };
+  if (hasImages) body.images = mediaPayload.images;
+  if (hasAudios) body.audios = mediaPayload.audios;
+
+  currentImages = [];
+  currentAudios = [];
+  renderImagePreviews();
+  imageInput.value = "";
+  audioInput.value = "";
+
+  try {
+    const response = await fetch("/api/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "include"
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      addMessageToCurrent("bot", data.error || "Something went wrong.");
+      sendButton.disabled = false;
+      messageInput.focus();
+      return;
+    }
+
+    setTyping(true);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const stream = startStreamEvent(reader, decoder);
+    await stream.readNext();
+  } catch (error) {
+    setTyping(false);
+    addMessageToCurrent("bot", "Network error. Please try again.");
+  } finally {
+    sendButton.disabled = false;
+    messageInput.focus();
+  }
+});
+
+initializeMessages();

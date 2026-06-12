@@ -1,6 +1,5 @@
 const { generateReply } = require("../services/huggingFaceService");
 const { generateVisionReply } = require("../services/opencodeService");
-const { generateImage } = require("../services/imageGenService");
 const {
   MAX_HISTORY_LENGTH,
   validateMessage,
@@ -33,41 +32,12 @@ const normalizeIncomingHistory = (history) => {
     .slice(-MAX_HISTORY_LENGTH);
 };
 
-// ----- Image Generation -----
-const postGenerateImage = async (req, res, next) => {
-  const prompt = req.body?.prompt;
-  if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-    return res.status(400).json({ error: "Prompt is required." });
-  }
-
-  res.setHeader("Content-Type", "text/plain");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-
-  const send = (obj) => { res.write(JSON.stringify(obj) + "\n"); };
-
-  send({ type: "typing", active: true });
-
-  try {
-    const imageDataUrl = await generateImage(prompt.trim());
-    send({ type: "typing", active: false });
-    send({ type: "image", dataUrl: imageDataUrl, prompt: prompt.trim() });
-    send({ type: "done" });
-    res.end();
-  } catch (error) {
-    send({ type: "typing", active: false });
-    send({ type: "error", message: "Image generation failed. Please try again." });
-    res.end();
-    next(error);
-  }
-};
-
-// ----- Chat Message -----
 const postMessage = async (req, res, next) => {
-  const attachments = req.body?.attachments;
-  const hasMedia = Array.isArray(attachments) && attachments.length > 0;
+  const images = req.body?.images;
+  const audios = req.body?.audios;
+  const hasImages = Array.isArray(images) && images.length > 0;
+  const hasAudios = Array.isArray(audios) && audios.length > 0;
+  const hasMedia = hasImages || hasAudios;
   const validation = validateMessage(req.body?.message || "");
   if (!validation.valid && !hasMedia) {
     return res.status(400).json({ error: validation.error });
@@ -98,7 +68,8 @@ const postMessage = async (req, res, next) => {
       reply = await generateVisionReply({
         message: cleanMessage,
         history: historyForModel,
-        attachments
+        images,
+        audios
       });
     } else {
       reply = await generateReply({
@@ -132,6 +103,5 @@ module.exports = {
   getHistory: getHistoryHandler,
   clearHistory: clearHistoryHandler,
   setHistory: setHistoryHandler,
-  postMessage,
-  postGenerateImage
+  postMessage
 };

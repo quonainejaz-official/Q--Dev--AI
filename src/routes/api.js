@@ -1,7 +1,6 @@
 const express = require("express");
 const {
   postMessage,
-  postGenerateImage,
   getHistory,
   clearHistory,
   setHistory
@@ -13,6 +12,5 @@ router.get("/history", getHistory);
 router.delete("/history", clearHistory);
 router.put("/history", setHistory);
 router.post("/message", postMessage);
-router.post("/generate-image", postGenerateImage);
 
 module.exports = router;

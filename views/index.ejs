@@ -67,15 +67,6 @@
               </button>
             </div>
             <div class="chat-header-actions">
-              <button id="exportPdfBtn" type="button" class="header-action-btn" title="Export as PDF">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="8" y1="13" x2="16" y2="13"></line>
-                  <line x1="8" y1="17" x2="16" y2="17"></line>
-                  <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
-              </button>
             </div>
           </header>
           <section id="messages" class="messages"></section>
@@ -89,8 +80,8 @@
         <div class="input-container">
           <form id="chatForm" class="composer" autocomplete="off">
             <div class="input-wrapper">
-              <div id="attachmentPreviewBar" class="attachment-preview-bar hidden">
-                <div id="previewAttachmentsList" class="preview-attachments-list"></div>
+              <div id="imagePreviewBar" class="image-preview-bar hidden">
+                <div id="previewImagesList" class="preview-images-list"></div>
               </div>
               <textarea
                 id="messageInput"
@@ -99,22 +90,21 @@
                 rows="1"
               ></textarea>
               <div class="input-footer">
-                <div class="input-actions-left">
-                  <button id="imageGenBtn" type="button" class="attach-btn" title="Generate image">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                      <polyline points="21 15 16 10 5 21"></polyline>
-                    </svg>
-                  </button>
-                </div>
                 <div class="input-actions-right">
-                  <button id="attachButton" type="button" class="attach-btn" title="Attach file">
+                  <button id="attachButton" type="button" class="attach-btn" title="Attach image">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
                     </svg>
                   </button>
-                  <input type="file" id="fileInput" accept="image/*,audio/*,video/*,application/pdf" multiple hidden />
+                  <input type="file" id="imageInput" accept="image/*" multiple hidden />
+                  <button id="audioAttachButton" type="button" class="attach-btn" title="Attach audio">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M9 18V5l12-2v13"></path>
+                      <circle cx="6" cy="18" r="3"></circle>
+                      <circle cx="18" cy="16" r="3"></circle>
+                    </svg>
+                  </button>
+                  <input type="file" id="audioInput" accept="audio/*" multiple hidden />
                   <button id="sendButton" type="submit" class="send-btn" disabled>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="12" y1="19" x2="12" y2="5"></line>
@@ -125,13 +115,6 @@
               </div>
             </div>
           </form>
-          <div id="imageGenPanel" class="image-gen-panel hidden">
-            <div class="image-gen-input-row">
-              <input type="text" id="imageGenPrompt" class="image-gen-input" placeholder="Describe the image to generate..." />
-              <button id="imageGenSubmitBtn" type="button" class="image-gen-submit-btn">Generate</button>
-              <button id="imageGenCloseBtn" type="button" class="image-gen-close-btn">&times;</button>
-            </div>
-          </div>
           <p class="disclaimer">AI-generated, for reference only</p>
         </div>
       </main>
