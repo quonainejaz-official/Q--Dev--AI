@@ -57,7 +57,7 @@ const postGenerateImage = async (req, res, next) => {
     res.end();
   } catch (error) {
     send({ type: "typing", active: false });
-    send({ type: "error", message: "Image generation failed. Please try again." });
+    send({ type: "error", message: `Image generation failed: ${error.message}` });
     res.end();
     next(error);
   }

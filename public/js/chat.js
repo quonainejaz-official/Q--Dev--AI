@@ -22,11 +22,7 @@ const audioAttachButton = document.getElementById("audioAttachButton");
 const audioInput = document.getElementById("audioInput");
 const fileInput = document.getElementById("fileInput");
 const exportPdfBtn = document.getElementById("exportPdfBtn");
-const imageGenBtn = document.getElementById("imageGenBtn");
-const imageGenPanel = document.getElementById("imageGenPanel");
-const imageGenPrompt = document.getElementById("imageGenPrompt");
-const imageGenSubmitBtn = document.getElementById("imageGenSubmitBtn");
-const imageGenCloseBtn = document.getElementById("imageGenCloseBtn");
+
 
 const MESSAGE_LIMITS = {
   maxLines: 5000,
@@ -947,27 +943,14 @@ const loadChatFromHistory = async (id) => {
   showToast("Chat loaded.", "success");
 };
 
-// ----- Image Generation -----
+// ----- Image Generation (/imagine command) -----
 let isGeneratingImage = false;
 
-const showImageGenPanel = () => {
-  imageGenPanel.classList.remove("hidden");
-  imageGenPrompt.value = "";
-  imageGenPrompt.focus();
-  imageGenSubmitBtn.disabled = false;
-  imageGenSubmitBtn.textContent = "Generate";
-};
+const IMG_CMD = "/imagine ";
 
-const hideImageGenPanel = () => {
-  imageGenPanel.classList.add("hidden");
-  imageGenPrompt.value = "";
-};
-
-const generateImage = async (prompt) => {
+const generateImageAndAppend = async (prompt) => {
   if (isGeneratingImage) return;
   isGeneratingImage = true;
-  imageGenSubmitBtn.disabled = true;
-  imageGenSubmitBtn.textContent = "Generating...";
 
   try {
     const response = await fetch("/api/generate-image", {
@@ -997,20 +980,17 @@ const generateImage = async (prompt) => {
         try {
           const data = JSON.parse(line);
           if (data.type === "image") {
-            appendGeneratedImage(data.dataUrl, data.prompt || prompt);
-            hideImageGenPanel();
+            appendGeneratedImage(data.dataUrl, prompt);
           } else if (data.type === "error") {
-            showToast(data.message || "Generation failed", "error");
+            addMessageToCurrent("bot", data.message || "Image generation failed.");
           }
         } catch (e) { /* partial line */ }
       }
     }
   } catch (err) {
-    showToast(err.message || "Image generation failed", "error");
+    addMessageToCurrent("bot", "Image generation failed: " + err.message);
   } finally {
     isGeneratingImage = false;
-    imageGenSubmitBtn.disabled = false;
-    imageGenSubmitBtn.textContent = "Generate";
   }
 };
 
@@ -1025,13 +1005,12 @@ const appendGeneratedImage = (dataUrl, prompt) => {
 
   const textEl = document.createElement("div");
   textEl.className = "message-text";
-  textEl.style.padding = "0 0 8px 0";
   textEl.textContent = 'Generated: "' + prompt + '"';
   contentDiv.appendChild(textEl);
 
   const imgContainer = document.createElement("div");
   imgContainer.style.textAlign = "center";
-  imgContainer.style.padding = "8px 0";
+  imgContainer.style.padding = "12px 0";
   const img = document.createElement("img");
   img.src = dataUrl;
   img.alt = prompt;
@@ -1052,43 +1031,6 @@ const appendGeneratedImage = (dataUrl, prompt) => {
 const exportChatAsPdf = () => {
   window.print();
 };
-
-// ----- Image Gen Event Listeners -----
-if (imageGenBtn) {
-  imageGenBtn.addEventListener("click", () => {
-    if (imageGenPanel.classList.contains("hidden")) {
-      showImageGenPanel();
-    } else {
-      hideImageGenPanel();
-    }
-  });
-}
-if (imageGenCloseBtn) {
-  imageGenCloseBtn.addEventListener("click", hideImageGenPanel);
-}
-if (imageGenSubmitBtn) {
-  imageGenSubmitBtn.addEventListener("click", () => {
-    const prompt = imageGenPrompt.value.trim();
-    if (!prompt) return;
-    generateImage(prompt);
-  });
-}
-if (imageGenPrompt) {
-  imageGenPrompt.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (imageGenSubmitBtn) imageGenSubmitBtn.click();
-    }
-  });
-}
-document.addEventListener("click", (e) => {
-  if (!imageGenPanel.classList.contains("hidden") &&
-      !imageGenPanel.contains(e.target) &&
-      e.target !== imageGenBtn &&
-      !(imageGenBtn && imageGenBtn.contains(e.target))) {
-    hideImageGenPanel();
-  }
-});
 
 // ----- Export PDF Event Listener -----
 if (exportPdfBtn) {
@@ -1613,6 +1555,25 @@ chatForm.addEventListener("submit", async (event) => {
   if (!message && !hasMedia) {
     return;
   }
+
+  // Check for /imagine command
+  const isImagineCmd = message.startsWith(IMG_CMD) && !hasMedia;
+  if (isImagineCmd) {
+    const prompt = message.slice(IMG_CMD.length).trim();
+    if (prompt) {
+      addMessageToCurrent("user", message);
+      messageInput.value = "";
+      messageInput.style.height = "auto";
+      sendButton.disabled = true;
+      setTyping(true);
+      await generateImageAndAppend(prompt);
+      setTyping(false);
+      sendButton.disabled = false;
+      messageInput.focus();
+      return;
+    }
+  }
+
   const historyForRequest = currentChat.messages.slice();
   const parts = [];
   if (hasImages) parts.push(`${currentImages.length} image${currentImages.length > 1 ? "s" : ""}`);

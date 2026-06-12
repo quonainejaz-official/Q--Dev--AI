@@ -1,66 +1,68 @@
-const OPENCODE_IMG_URL = "https://opencode.ai/zen/v1/images/generations";
-const HF_IMG_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell";
+const ZEN_API_URL = "https://opencode.ai/zen/v1/chat/completions";
 
-const generateWithOpenCode = async (prompt) => {
-  const response = await fetch(OPENCODE_IMG_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENCODE_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "mimo-v2.5-free",
-      prompt,
-      n: 1,
-      response_format: "b64_json"
-    })
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`OpenCode image gen error (${response.status}): ${text}`);
+const getHeaders = () => {
+  const headers = { "Content-Type": "application/json" };
+  if (process.env.OPENCODE_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.OPENCODE_API_KEY}`;
   }
-
-  const data = await response.json();
-  const b64 = data?.data?.[0]?.b64_json;
-  if (b64) {
-    return `data:image/png;base64,${b64}`;
-  }
-  throw new Error("No image data in OpenCode response");
+  return headers;
 };
 
-const generateWithHuggingFace = async (prompt) => {
-  const response = await fetch(HF_IMG_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.HF_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ inputs: prompt })
-  });
+const SVG_SYSTEM_PROMPT = `You are an SVG image generator. Given a text prompt, generate a valid SVG image representing it.
+Rules:
+- Output ONLY valid SVG code inside a fenced code block with language "svg"
+- The SVG must have width="512" height="512" and viewBox="0 0 512 512"
+- Use proper SVG elements: rect, circle, path, text, etc.
+- Use appropriate colors and styling
+- Keep it simple but visually appealing
+- Do NOT include any explanation or text outside the code block
+- The SVG should be self-contained (no external resources, no CSS imports)
+- Use semantic colors and gradients where appropriate`;
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`HF image gen error (${response.status}): ${text}`);
-  }
-
-  const buffer = await response.arrayBuffer();
-  const base64 = Buffer.from(buffer).toString("base64");
-  const mime = response.headers.get("content-type") || "image/png";
-  return `data:${mime};base64,${base64}`;
+const svgToDataUrl = (svgCode) => {
+  const encoded = Buffer.from(svgCode).toString("base64");
+  return `data:image/svg+xml;base64,${encoded}`;
 };
 
 const generateImage = async (prompt) => {
-  try {
-    return await generateWithOpenCode(prompt);
-  } catch (ocErr) {
-    // OpenCode failed, fallback to HuggingFace
-    try {
-      return await generateWithHuggingFace(prompt);
-    } catch (hfErr) {
-      throw new Error(`Image generation failed: OpenCode (${ocErr.message}) | HF (${hfErr.message})`);
-    }
+  const svgPrompt = `Generate an SVG image of: ${prompt}`;
+
+  const body = JSON.stringify({
+    model: "mimo-v2.5-free",
+    messages: [
+      { role: "system", content: SVG_SYSTEM_PROMPT },
+      { role: "user", content: svgPrompt }
+    ],
+    max_tokens: 4096
+  });
+
+  const response = await fetch(ZEN_API_URL, {
+    method: "POST",
+    headers: getHeaders(),
+    body,
+    signal: AbortSignal.timeout(120000)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Zen API error (${response.status}): ${text.slice(0, 200)}`);
   }
+
+  const data = await response.json();
+  const reply = data.choices?.[0]?.message?.content || "";
+
+  // Extract SVG from fenced code block
+  const svgMatch = reply.match(/```svg\s*\n?([\s\S]*?)```/) || reply.match(/```\s*\n?([\s\S]*?)```/);
+  if (!svgMatch) {
+    throw new Error("No SVG code found in response");
+  }
+
+  const svgCode = svgMatch[1].trim();
+  if (!svgCode.startsWith("<svg") && !svgCode.includes("<svg")) {
+    throw new Error("Response does not contain valid SVG");
+  }
+
+  return svgToDataUrl(svgCode);
 };
 
 module.exports = { generateImage };

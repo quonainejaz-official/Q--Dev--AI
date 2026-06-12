@@ -1326,83 +1326,7 @@ body {
   color: var(--text-primary);
 }
 
-/* ----- Input Actions Left ----- */
-.input-actions-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
-/* ----- Image Generation Panel ----- */
-.image-gen-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 12px;
-  animation: fadeIn 0.2s ease;
-}
-.image-gen-panel.hidden {
-  display: none;
-}
-.image-gen-input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.image-gen-input {
-  flex: 1;
-  background: var(--input-bg);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 14px;
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.2s ease;
-}
-.image-gen-input:focus {
-  border-color: var(--accent-blue);
-}
-.image-gen-submit-btn {
-  padding: 10px 18px;
-  background: var(--accent-blue);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  white-space: nowrap;
-}
-.image-gen-submit-btn:hover {
-  filter: brightness(1.1);
-}
-.image-gen-submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.image-gen-close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 24px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  line-height: 1;
-  transition: all 0.2s ease;
-}
-.image-gen-close-btn:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
 
 /* ----- Print Styles for PDF Export ----- */
 @media print {
@@ -1415,8 +1339,7 @@ body {
   .input-container,
   .chat-header-actions,
   .header-action-btn,
-  .typing,
-  .image-gen-panel {
+  .typing {
     display: none !important;
   }
   .app-container {
