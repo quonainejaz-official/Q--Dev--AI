@@ -850,6 +850,60 @@ body {
   font-family: inherit;
 }
 
+/* Recording Indicator */
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 0 12px 6px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.recording-indicator.hidden {
+  display: none;
+}
+
+.recording-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+}
+
+.recording-wave span {
+  display: block;
+  width: 3px;
+  height: 12px;
+  background: #ef4444;
+  border-radius: 3px;
+  animation: waveAnim 0.8s ease-in-out infinite;
+}
+
+.recording-wave span:nth-child(2) { animation-delay: 0.1s; height: 16px; }
+.recording-wave span:nth-child(3) { animation-delay: 0.2s; height: 20px; }
+.recording-wave span:nth-child(4) { animation-delay: 0.3s; height: 14px; }
+.recording-wave span:nth-child(5) { animation-delay: 0.4s; height: 10px; }
+
+@keyframes waveAnim {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
+}
+
+.recording-text {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.recording-tap-hint {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-left: auto;
+}
+
 .image-mode-banner {
   display: flex;
   align-items: center;

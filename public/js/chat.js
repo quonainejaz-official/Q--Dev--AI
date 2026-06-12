@@ -129,6 +129,9 @@ if (imageViewerEditInput) {
 let isImageMode = false;
 let isRecording = false;
 let recognition = null;
+let recordingStoppedIntentionally = false;
+
+const recordingIndicator = document.getElementById("recordingIndicator");
 
 const enterImageMode = () => {
   isImageMode = true;
@@ -173,16 +176,17 @@ document.addEventListener("click", () => {
 });
 
 // ----- Speech Recognition -----
+
 const initSpeechRecognition = () => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    micButton.style.display = "none";
+  if (!SR || !micButton) {
+    if (micButton) micButton.style.display = "none";
     return;
   }
   recognition = new SR();
   recognition.lang = "en-US";
   recognition.interimResults = true;
-  recognition.continuous = true;
+  recognition.continuous = false;
 
   recognition.onresult = (event) => {
     let transcript = "";
@@ -192,38 +196,67 @@ const initSpeechRecognition = () => {
     messageInput.value = transcript;
     messageInput.style.height = "auto";
     messageInput.style.height = `${messageInput.scrollHeight}px`;
-    sendButton.disabled = !messageInput.value.trim();
+    sendButton.disabled = false;
   };
 
-  recognition.onerror = () => {
-    stopRecording();
+  recognition.onerror = (event) => {
+    if (event.error === "no-speech") {
+      // No speech detected - just stop quietly
+    } else if (event.error === "aborted") {
+      // User stopped - intentional
+    } else {
+      showToast("Voice input error: " + event.error, "error");
+    }
+    stopRecordingUI();
   };
 
   recognition.onend = () => {
-    if (isRecording) recognition.start();
+    if (isRecording && !recordingStoppedIntentionally) {
+      // Ended naturally (e.g., user stopped speaking) - try to send
+      const text = messageInput.value.trim();
+      if (text) {
+        chatForm.requestSubmit();
+      }
+    }
+    stopRecordingUI();
   };
+};
+
+const stopRecordingUI = () => {
+  isRecording = false;
+  recordingStoppedIntentionally = true;
+  if (micButton) {
+    micButton.classList.remove("recording");
+    micButton.title = "Voice input";
+  }
+  if (recordingIndicator) recordingIndicator.classList.add("hidden");
 };
 
 const startRecording = () => {
   if (!recognition) initSpeechRecognition();
   if (!recognition) return;
   try {
+    recordingStoppedIntentionally = false;
     recognition.start();
     isRecording = true;
     micButton.classList.add("recording");
-    micButton.title = "Stop recording";
+    micButton.title = "Tap to stop & send";
+    if (recordingIndicator) recordingIndicator.classList.remove("hidden");
   } catch (e) {
     // already started
   }
 };
 
 const stopRecording = () => {
+  recordingStoppedIntentionally = true;
   if (recognition) {
     try { recognition.stop(); } catch (e) { /* ignore */ }
   }
-  isRecording = false;
-  micButton.classList.remove("recording");
-  micButton.title = "Voice input";
+  stopRecordingUI();
+  const text = messageInput.value.trim();
+  if (text) {
+    chatForm.requestSubmit();
+  }
 };
 
 if (micButton) {
