@@ -22,6 +22,220 @@ const audioAttachButton = document.getElementById("audioAttachButton");
 const audioInput = document.getElementById("audioInput");
 const fileInput = document.getElementById("fileInput");
 const exportPdfBtn = document.getElementById("exportPdfBtn");
+const addButton = document.getElementById("addButton");
+const addMenu = document.getElementById("addMenu");
+const imageModeBanner = document.getElementById("imageModeBanner");
+const exitImageModeBtn = document.getElementById("exitImageModeBtn");
+const micButton = document.getElementById("micButton");
+const imageViewer = document.getElementById("imageViewer");
+const imageViewerImg = document.getElementById("imageViewerImg");
+const imageViewerTitle = document.getElementById("imageViewerTitle");
+const imageViewerCopy = document.getElementById("imageViewerCopy");
+const imageViewerDownload = document.getElementById("imageViewerDownload");
+const imageViewerEdit = document.getElementById("imageViewerEdit");
+const imageViewerClose = document.getElementById("imageViewerClose");
+const imageViewerEditPanel = document.getElementById("imageViewerEditPanel");
+const imageViewerEditInput = document.getElementById("imageViewerEditInput");
+const imageViewerEditSubmit = document.getElementById("imageViewerEditSubmit");
+
+let lastGeneratedImageDataUrl = "";
+let lastGeneratedPrompt = "";
+
+// Image Viewer
+const openImageViewer = (dataUrl, prompt) => {
+  imageViewerImg.src = dataUrl;
+  imageViewerTitle.textContent = prompt ? `Generated: "${prompt}"` : "Generated Image";
+  lastGeneratedImageDataUrl = dataUrl;
+  lastGeneratedPrompt = prompt || "";
+  imageViewerEditPanel.classList.add("hidden");
+  imageViewer.classList.remove("hidden");
+};
+
+const closeImageViewer = () => {
+  imageViewer.classList.add("hidden");
+  imageViewerEditPanel.classList.add("hidden");
+};
+
+if (imageViewerClose) imageViewerClose.addEventListener("click", closeImageViewer);
+
+if (imageViewer) {
+  imageViewer.addEventListener("click", (e) => {
+    if (e.target === imageViewer) closeImageViewer();
+  });
+}
+
+if (imageViewerCopy) {
+  imageViewerCopy.addEventListener("click", async () => {
+    try {
+      const response = await fetch(lastGeneratedImageDataUrl);
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob })
+      ]);
+      imageViewerCopy.textContent = "Copied!";
+      setTimeout(() => { imageViewerCopy.textContent = "Copy"; }, 2000);
+    } catch (e) {
+      // fallback: copy the URL
+      try {
+        await navigator.clipboard.writeText(lastGeneratedImageDataUrl);
+        imageViewerCopy.textContent = "Copied!";
+        setTimeout(() => { imageViewerCopy.textContent = "Copy"; }, 2000);
+      } catch (e2) {
+        showToast("Failed to copy image", "error");
+      }
+    }
+  });
+}
+
+if (imageViewerDownload) {
+  imageViewerDownload.addEventListener("click", () => {
+    const link = document.createElement("a");
+    link.href = lastGeneratedImageDataUrl;
+    link.download = "generated-image.svg";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+}
+
+if (imageViewerEdit) {
+  imageViewerEdit.addEventListener("click", () => {
+    imageViewerEditInput.value = lastGeneratedPrompt;
+    imageViewerEditPanel.classList.remove("hidden");
+    imageViewerEditInput.focus();
+  });
+}
+
+if (imageViewerEditSubmit) {
+  imageViewerEditSubmit.addEventListener("click", async () => {
+    const newPrompt = imageViewerEditInput.value.trim();
+    if (!newPrompt) return;
+    closeImageViewer();
+    setTyping(true);
+    await generateImageAndAppend(newPrompt);
+    setTyping(false);
+  });
+}
+
+if (imageViewerEditInput) {
+  imageViewerEditInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (imageViewerEditSubmit) imageViewerEditSubmit.click();
+    }
+  });
+}
+
+let isImageMode = false;
+let isRecording = false;
+let recognition = null;
+
+const enterImageMode = () => {
+  isImageMode = true;
+  imageModeBanner.classList.remove("hidden");
+  messageInput.placeholder = "Describe what to create";
+  messageInput.focus();
+  addMenu.classList.add("hidden");
+};
+
+const exitImageMode = () => {
+  isImageMode = false;
+  imageModeBanner.classList.add("hidden");
+  messageInput.placeholder = "Message";
+};
+
+if (exitImageModeBtn) {
+  exitImageModeBtn.addEventListener("click", exitImageMode);
+}
+
+if (addButton) {
+  addButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    addMenu.classList.toggle("hidden");
+  });
+}
+
+if (addMenu) {
+  addMenu.querySelectorAll(".add-menu-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+      if (action === "file") fileInput.click();
+      else if (action === "audio") audioInput.click();
+      else if (action === "image-gen") enterImageMode();
+      addMenu.classList.add("hidden");
+    });
+  });
+}
+
+document.addEventListener("click", () => {
+  if (addMenu) addMenu.classList.add("hidden");
+});
+
+// ----- Speech Recognition -----
+const initSpeechRecognition = () => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    micButton.style.display = "none";
+    return;
+  }
+  recognition = new SR();
+  recognition.lang = "en-US";
+  recognition.interimResults = true;
+  recognition.continuous = true;
+
+  recognition.onresult = (event) => {
+    let transcript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+    messageInput.value = transcript;
+    messageInput.style.height = "auto";
+    messageInput.style.height = `${messageInput.scrollHeight}px`;
+    sendButton.disabled = !messageInput.value.trim();
+  };
+
+  recognition.onerror = () => {
+    stopRecording();
+  };
+
+  recognition.onend = () => {
+    if (isRecording) recognition.start();
+  };
+};
+
+const startRecording = () => {
+  if (!recognition) initSpeechRecognition();
+  if (!recognition) return;
+  try {
+    recognition.start();
+    isRecording = true;
+    micButton.classList.add("recording");
+    micButton.title = "Stop recording";
+  } catch (e) {
+    // already started
+  }
+};
+
+const stopRecording = () => {
+  if (recognition) {
+    try { recognition.stop(); } catch (e) { /* ignore */ }
+  }
+  isRecording = false;
+  micButton.classList.remove("recording");
+  micButton.title = "Voice input";
+};
+
+if (micButton) {
+  initSpeechRecognition();
+  micButton.addEventListener("click", () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  });
+}
 
 
 const MESSAGE_LIMITS = {
@@ -1018,8 +1232,52 @@ const appendGeneratedImage = (dataUrl, prompt) => {
   img.style.maxHeight = "400px";
   img.style.borderRadius = "12px";
   img.style.border = "1px solid var(--border-color)";
+  img.style.cursor = "pointer";
+  img.addEventListener("click", () => openImageViewer(dataUrl, prompt));
   imgContainer.appendChild(img);
-  contentDiv.appendChild(imgContainer);
+
+  const actionsRow = document.createElement("div");
+  actionsRow.style.display = "flex";
+  actionsRow.style.gap = "8px";
+  actionsRow.style.justifyContent = "center";
+  actionsRow.style.marginTop = "8px";
+
+  const makeActionBtn = (label, onClick) => {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.style.cssText = "background:transparent;border:1px solid var(--border-color);border-radius:8px;padding:6px 14px;color:var(--text-primary);cursor:pointer;font-size:13px;font-family:inherit;transition:all 0.2s ease";
+    btn.addEventListener("mouseenter", () => { btn.style.background = "var(--hover-bg)"; });
+    btn.addEventListener("mouseleave", () => { btn.style.background = "transparent"; });
+    btn.addEventListener("click", onClick);
+    return btn;
+  };
+
+  actionsRow.appendChild(makeActionBtn("View", () => openImageViewer(dataUrl, prompt)));
+  actionsRow.appendChild(makeActionBtn("Copy", async () => {
+    try {
+      const r = await fetch(dataUrl);
+      const blob = await r.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      showToast("Image copied", "success");
+    } catch (e) {
+      showToast("Failed to copy", "error");
+    }
+  }));
+  actionsRow.appendChild(makeActionBtn("Download", () => {
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = "generated-image.svg";
+    link.click();
+  }));
+  const editBtn = makeActionBtn("Edit", () => {
+    openImageViewer(dataUrl, prompt);
+    imageViewerEditInput.value = prompt || "";
+    imageViewerEditPanel.classList.remove("hidden");
+    imageViewerEditInput.focus();
+  });
+  actionsRow.appendChild(editBtn);
+
+  contentDiv.appendChild(actionsRow);
 
   msgDiv.appendChild(contentDiv);
   messagesContainer.appendChild(msgDiv);
@@ -1556,11 +1814,13 @@ chatForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  // Check for /imagine command
+  // Check for /imagine command or image mode
   const isImagineCmd = message.startsWith(IMG_CMD) && !hasMedia;
-  if (isImagineCmd) {
-    const prompt = message.slice(IMG_CMD.length).trim();
+  const shouldGenerateImage = isImagineCmd || (isImageMode && !hasMedia);
+  if (shouldGenerateImage) {
+    const prompt = isImagineCmd ? message.slice(IMG_CMD.length).trim() : message;
     if (prompt) {
+      if (isImageMode) exitImageMode();
       addMessageToCurrent("user", message);
       messageInput.value = "";
       messageInput.style.height = "auto";

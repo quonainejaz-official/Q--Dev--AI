@@ -8,16 +8,19 @@ const getHeaders = () => {
   return headers;
 };
 
-const SVG_SYSTEM_PROMPT = `You are an SVG image generator. Given a text prompt, generate a valid SVG image representing it.
+const SVG_SYSTEM_PROMPT = `You are an SVG artist. Given a text prompt, generate a photorealistic detailed SVG image.
+
 Rules:
 - Output ONLY valid SVG code inside a fenced code block with language "svg"
 - The SVG must have width="512" height="512" and viewBox="0 0 512 512"
-- Use proper SVG elements: rect, circle, path, text, etc.
-- Use appropriate colors and styling
-- Keep it simple but visually appealing
+- Use gradients, shadows, lighting effects, and layers for depth and realism
+- Use proper SVG elements: defs, linearGradient, radialGradient, filter, drop-shadow, rect, circle, path, g
+- Include detailed shapes, smooth curves, and precise colors
+- Make the image visually rich with proper proportions and perspective
 - Do NOT include any explanation or text outside the code block
-- The SVG should be self-contained (no external resources, no CSS imports)
-- Use semantic colors and gradients where appropriate`;
+- The SVG must be self-contained (no external resources)
+- Use multiple layers and overlapping elements for realism
+- Add subtle gradients and highlights for a polished look`;
 
 const svgToDataUrl = (svgCode) => {
   const encoded = Buffer.from(svgCode).toString("base64");
