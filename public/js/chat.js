@@ -226,8 +226,7 @@ const startRecording = () => {
       const text = (pendingTranscript || messageInput.value).trim();
       if (text) {
         messageInput.value = text;
-        sendButton.disabled = false;
-        sendButton.click();
+        submitMessage();
       }
     }
     stopRecordingUI();
