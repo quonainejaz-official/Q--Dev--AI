@@ -33,13 +33,14 @@ const normalizeIncomingHistory = (history) => {
 };
 
 const postMessage = async (req, res, next) => {
-  const hasImage = Boolean(req.body?.image);
+  const images = req.body?.images;
+  const hasImages = Array.isArray(images) && images.length > 0;
   const validation = validateMessage(req.body?.message || "");
-  if (!validation.valid && !hasImage) {
+  if (!validation.valid && !hasImages) {
     return res.status(400).json({ error: validation.error });
   }
 
-  const cleanMessage = hasImage ? sanitizeMessage(validation.value || "") : sanitizeMessage(validation.value);
+  const cleanMessage = hasImages ? sanitizeMessage(validation.value || "") : sanitizeMessage(validation.value);
 
   res.setHeader("Content-Type", "text/plain");
   res.setHeader("Cache-Control", "no-cache");
@@ -60,11 +61,11 @@ const postMessage = async (req, res, next) => {
         : incomingHistory;
 
     let reply;
-    if (hasImage) {
+    if (hasImages) {
       reply = await generateVisionReply({
         message: cleanMessage,
         history: historyForModel,
-        imageDataUrl: req.body.image
+        images
       });
     } else {
       reply = await generateReply({

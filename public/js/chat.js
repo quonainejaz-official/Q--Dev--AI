@@ -17,9 +17,7 @@ const sidebarOverlay = document.getElementById("sidebarOverlay");
 const attachButton = document.getElementById("attachButton");
 const imageInput = document.getElementById("imageInput");
 const imagePreviewBar = document.getElementById("imagePreviewBar");
-const previewImage = document.getElementById("previewImage");
-const previewFilename = document.getElementById("previewFilename");
-const removeImageBtn = document.getElementById("removeImageBtn");
+const previewImagesList = document.getElementById("previewImagesList");
 
 const MESSAGE_LIMITS = {
   maxLines: 5000,
@@ -69,41 +67,65 @@ const maybeToastLimit = (key, message) => {
   showToast(message, "error");
 };
 
-let currentImageDataUrl = null;
+let currentImages = [];
+const MAX_IMAGES = 5;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const renderImagePreviews = () => {
+  previewImagesList.innerHTML = "";
+  if (currentImages.length === 0) {
+    imagePreviewBar.classList.add("hidden");
+    return;
+  }
+  imagePreviewBar.classList.remove("hidden");
+  currentImages.forEach((dataUrl, idx) => {
+    const thumb = document.createElement("div");
+    thumb.className = "preview-thumb";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = `Image ${idx + 1}`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "remove-thumb-btn";
+    btn.textContent = "\u00d7";
+    btn.title = "Remove";
+    btn.addEventListener("click", () => {
+      currentImages.splice(idx, 1);
+      renderImagePreviews();
+    });
+    thumb.append(img, btn);
+    previewImagesList.appendChild(thumb);
+  });
+};
+
+const addImagesFromFiles = (files) => {
+  const remaining = MAX_IMAGES - currentImages.length;
+  if (remaining <= 0) {
+    showToast(`Max ${MAX_IMAGES} images allowed.`, "error");
+    return;
+  }
+  const toProcess = Array.from(files).slice(0, remaining);
+  toProcess.forEach((file) => {
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast(`"${file.name}" skipped (max 5MB).`, "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentImages.push(e.target.result);
+      renderImagePreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+};
 
 attachButton.addEventListener("click", () => {
   imageInput.click();
 });
 
 imageInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  if (file.size > 5 * 1024 * 1024) {
-    showToast("Image must be under 5MB.", "error");
-    imageInput.value = "";
-    return;
-  }
-
-  if (!file.type.startsWith("image/")) {
-    showToast("Please select a valid image file.", "error");
-    imageInput.value = "";
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    currentImageDataUrl = event.target.result;
-    previewImage.src = currentImageDataUrl;
-    previewFilename.textContent = file.name;
-    imagePreviewBar.classList.remove("hidden");
-  };
-  reader.readAsDataURL(file);
-});
-
-removeImageBtn.addEventListener("click", () => {
-  currentImageDataUrl = null;
-  imagePreviewBar.classList.add("hidden");
+  if (e.target.files.length) addImagesFromFiles(e.target.files);
   imageInput.value = "";
 });
 
@@ -324,7 +346,7 @@ const loadStoredCurrent = () => {
 };
 
 const stripImages = (messages) =>
-  messages.map(({ image, ...rest }) => rest);
+  messages.map(({ images, ...rest }) => rest);
 
 const persistState = () => {
   const historyToSave = chatHistory.map((chat) => ({
@@ -405,12 +427,17 @@ const appendMessageToUI = (message) => {
   const bubble = document.createElement("div");
   bubble.className = `message ${message.role}`;
 
-  if (message.image && message.role === "user") {
-    const img = document.createElement("img");
-    img.className = "message-image";
-    img.src = message.image;
-    img.alt = "Attached image";
-    bubble.appendChild(img);
+  if (message.images && message.images.length && message.role === "user") {
+    const imagesWrap = document.createElement("div");
+    imagesWrap.className = "message-images";
+    message.images.forEach((src) => {
+      const img = document.createElement("img");
+      img.className = "message-image";
+      img.src = src;
+      img.alt = "Attached image";
+      imagesWrap.appendChild(img);
+    });
+    bubble.appendChild(imagesWrap);
   }
 
   // Create message content
@@ -709,10 +736,10 @@ const loadChatFromHistory = async (id) => {
   showToast("Chat loaded.", "success");
 };
 
-const addMessageToCurrent = (role, content, image) => {
+const addMessageToCurrent = (role, content, images) => {
   const message = { role, content, timestamp: Date.now() };
-  if (image) {
-    message.image = image;
+  if (images && images.length) {
+    message.images = images;
   }
   currentChat.messages.push(message);
   if (!currentChat.titleIsCustom) {
@@ -1125,31 +1152,18 @@ messageInput.addEventListener("keydown", (event) => {
 
 messageInput.addEventListener("paste", (event) => {
   const items = event.clipboardData.items;
-  let imageFile = null;
+  const images = [];
 
   for (const item of items) {
     if (item.type.startsWith("image/")) {
-      imageFile = item.getAsFile();
-      break;
+      const file = item.getAsFile();
+      if (file) images.push(file);
     }
   }
 
-  if (imageFile) {
+  if (images.length) {
     event.preventDefault();
-
-    if (imageFile.size > 5 * 1024 * 1024) {
-      showToast("Image must be under 5MB.", "error");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      currentImageDataUrl = e.target.result;
-      previewImage.src = currentImageDataUrl;
-      previewFilename.textContent = "Pasted image";
-      imagePreviewBar.classList.remove("hidden");
-    };
-    reader.readAsDataURL(imageFile);
+    addImagesFromFiles(images);
   }
 });
 
@@ -1160,24 +1174,24 @@ chatForm.addEventListener("submit", async (event) => {
     messageInput.value = enforced;
   }
   const message = enforced.trim();
-  const hasImage = Boolean(currentImageDataUrl);
-  if (!message && !hasImage) {
+  const hasImages = currentImages.length > 0;
+  if (!message && !hasImages) {
     return;
   }
   const historyForRequest = currentChat.messages.slice();
-  const displayContent = message || "[Image attached]";
-  addMessageToCurrent("user", displayContent, currentImageDataUrl);
+  const displayContent = message || `[Image${currentImages.length > 1 ? "s" : ""} attached]`;
+  addMessageToCurrent("user", displayContent, currentImages.length ? [...currentImages] : null);
   messageInput.value = "";
   messageInput.style.height = "auto";
   sendButton.disabled = true;
 
   const body = { message, history: historyForRequest };
-  if (hasImage) {
-    body.image = currentImageDataUrl;
+  if (hasImages) {
+    body.images = [...currentImages];
   }
 
-  currentImageDataUrl = null;
-  imagePreviewBar.classList.add("hidden");
+  currentImages = [];
+  renderImagePreviews();
   imageInput.value = "";
 
   try {

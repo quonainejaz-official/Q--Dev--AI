@@ -1,7 +1,7 @@
 const OPENCODE_API_URL = "https://opencode.ai/zen/v1/chat/completions";
 const VISION_MODEL = "mimo-v2.5-free";
 
-const buildVisionMessages = (history, text, imageDataUrl) => {
+const buildVisionMessages = (history, text, images) => {
   const messages = [
     {
       role: "system",
@@ -23,8 +23,10 @@ const buildVisionMessages = (history, text, imageDataUrl) => {
   if (text) {
     content.push({ type: "text", text });
   }
-  if (imageDataUrl) {
-    content.push({ type: "image_url", image_url: { url: imageDataUrl } });
+  if (Array.isArray(images)) {
+    images.forEach((dataUrl) => {
+      content.push({ type: "image_url", image_url: { url: dataUrl } });
+    });
   }
 
   messages.push({ role: "user", content });
@@ -45,10 +47,10 @@ const parseReply = (payload) => {
   return payload.choices?.[0]?.message?.content || null;
 };
 
-const generateVisionReply = async ({ message, history, imageDataUrl }) => {
+const generateVisionReply = async ({ message, history, images }) => {
   const body = JSON.stringify({
     model: VISION_MODEL,
-    messages: buildVisionMessages(history, message, imageDataUrl)
+    messages: buildVisionMessages(history, message, images)
   });
 
   const response = await fetch(OPENCODE_API_URL, {
