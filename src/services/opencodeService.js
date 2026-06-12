@@ -66,10 +66,29 @@ const parseReply = (payload) => {
   return payload.choices?.[0]?.message?.content || null;
 };
 
-const generateVisionReply = async ({ message, history, images, audios }) => {
+const buildMultimodalMessagesAll = (history, text, images, audios, videos, pdfs) => {
+  const msgs = buildMultimodalMessages(history, text, images, audios);
+  if (msgs.length === 0) return msgs;
+  const lastMsg = msgs[msgs.length - 1];
+  if (lastMsg.role !== "user" || !Array.isArray(lastMsg.content)) return msgs;
+
+  if (Array.isArray(videos)) {
+    videos.forEach((dataUrl) => {
+      lastMsg.content.push({ type: "image_url", image_url: { url: dataUrl } });
+    });
+  }
+  if (Array.isArray(pdfs)) {
+    pdfs.forEach((dataUrl) => {
+      lastMsg.content.push({ type: "image_url", image_url: { url: dataUrl } });
+    });
+  }
+  return msgs;
+};
+
+const generateVisionReply = async ({ message, history, images, audios, videos, pdfs }) => {
   const body = JSON.stringify({
     model: VISION_MODEL,
-    messages: buildMultimodalMessages(history, message, images, audios)
+    messages: buildMultimodalMessagesAll(history, message, images, audios, videos, pdfs)
   });
 
   const response = await fetch(OPENCODE_API_URL, {

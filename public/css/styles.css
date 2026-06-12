@@ -1125,8 +1125,8 @@ body {
   .app-container.sidebar-collapsed .sidebar {
     transform: translateX(-100%);
     width: 280px;
-    padding: 12px; /* Restore padding on mobile */
-    border-right: 1px solid var(--border-color); /* Restore border on mobile */
+    padding: 12px;
+    border-right: 1px solid var(--border-color);
     opacity: 1;
   }
 
@@ -1144,12 +1144,12 @@ body {
     top: 0;
     left: 0;
     width: 100%;
-    pointer-events: none; /* Let clicks pass through to toggle buttons */
+    pointer-events: none;
   }
 
   .sidebar-toggle-main, .new-chat-btn-main {
     display: flex !important;
-    pointer-events: auto; /* Re-enable clicks for buttons */
+    pointer-events: auto;
     top: 12px;
   }
 
@@ -1204,7 +1204,7 @@ body {
   }
 
   .chat-header {
-    padding: 12px 15px 12px 85px !important; /* Adjust spacing for toggles */
+    padding: 12px 15px 12px 85px !important;
     height: 60px;
     display: flex;
     align-items: center;
@@ -1218,7 +1218,6 @@ body {
     font-size: 10px;
   }
 
-  /* Refined Composer for Mobile */
   .composer {
     padding: 8px 12px;
     border-radius: 12px;
@@ -1239,12 +1238,10 @@ body {
     padding-top: 4px;
   }
 
-  /* Typing indicator spacing */
   .typing {
     padding: 0 16px 16px;
   }
 
-  /* History list items on mobile */
   .history-item {
     padding: 12px;
     border-radius: 10px;
@@ -1257,5 +1254,231 @@ body {
   .new-chat-btn {
     margin-bottom: 16px;
     padding: 8px 12px;
+  }
+}
+
+/* ----- Tables ----- */
+.message-text table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 14px;
+}
+.message-text th, .message-text td {
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  text-align: left;
+}
+.message-text th {
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+}
+.message-text tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ----- Blockquotes ----- */
+.message-text blockquote {
+  border-left: 3px solid var(--accent-blue);
+  padding: 8px 16px;
+  margin: 12px 0;
+  background: rgba(76, 130, 251, 0.06);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+.message-text blockquote p {
+  margin: 0;
+}
+
+/* ----- Horizontal Rules ----- */
+.message-text hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 16px 0;
+}
+
+/* ----- Strikethrough ----- */
+.message-text s {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* ----- Header Action Buttons ----- */
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.header-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.header-action-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* ----- Input Actions Left ----- */
+.input-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ----- Image Generation Panel ----- */
+.image-gen-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px;
+  animation: fadeIn 0.2s ease;
+}
+.image-gen-panel.hidden {
+  display: none;
+}
+.image-gen-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.image-gen-input {
+  flex: 1;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+.image-gen-input:focus {
+  border-color: var(--accent-blue);
+}
+.image-gen-submit-btn {
+  padding: 10px 18px;
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.image-gen-submit-btn:hover {
+  filter: brightness(1.1);
+}
+.image-gen-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.image-gen-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+.image-gen-close-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* ----- Print Styles for PDF Export ----- */
+@media print {
+  body {
+    background: white;
+    color: black;
+    overflow: visible;
+  }
+  .sidebar,
+  .input-container,
+  .chat-header-actions,
+  .header-action-btn,
+  .typing,
+  .image-gen-panel {
+    display: none !important;
+  }
+  .app-container {
+    display: block;
+    height: auto;
+    width: 100%;
+  }
+  .main-content {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+  .chat-area {
+    display: block !important;
+    overflow: visible;
+  }
+  .chat-header {
+    border-bottom: 1px solid #ccc;
+  }
+  .messages {
+    overflow: visible;
+    padding: 20px;
+    max-width: 100%;
+  }
+  .message {
+    page-break-inside: avoid;
+  }
+  .message-text {
+    color: black;
+  }
+  .message.user .message-text {
+    background: #f0f0f0;
+    color: black;
+  }
+  .message.bot .message-text {
+    color: black;
+  }
+  .message-text strong { color: black; }
+  .inline-code {
+    background: #eee;
+    color: #333;
+  }
+  .code-block-container {
+    border: 1px solid #ccc;
+  }
+  .code-block-header {
+    background: #f5f5f5;
+    border-bottom: 1px solid #ccc;
+  }
+  .code-block-container code { color: #333; }
+  .token-keyword { color: #d73a49; }
+  .token-function { color: #6f42c1; }
+  .token-string { color: #032f62; }
+  .token-number { color: #005cc5; }
+  .token-comment { color: #6a737d; }
+  .message-text table th {
+    background: #f5f5f5;
+    color: black;
+  }
+  .message-text table td { color: black; }
+  .message-text blockquote {
+    border-left-color: #0366d6;
+    color: #555;
   }
 }
