@@ -1859,7 +1859,11 @@ chatForm.addEventListener("submit", async (event) => {
     }
   }
 
-  const historyForRequest = currentChat.messages.slice();
+  // Strip media data URLs from history to keep payload under Vercel's 4.5MB limit
+  const historyForRequest = currentChat.messages.map(m => {
+    const { images, audios, videos, pdfs, ...rest } = m;
+    return rest;
+  });
   const parts = [];
   if (hasImages) parts.push(`${currentImages.length} image${currentImages.length > 1 ? "s" : ""}`);
   if (hasAudios) parts.push(`${currentAudios.length} audio file${currentAudios.length > 1 ? "s" : ""}`);
@@ -1891,6 +1895,8 @@ chatForm.addEventListener("submit", async (event) => {
   audioInput.value = "";
   fileInput.value = "";
 
+  setTyping(true);
+
   try {
     const response = await fetch("/api/message", {
       method: "POST",
@@ -1900,14 +1906,17 @@ chatForm.addEventListener("submit", async (event) => {
     });
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      addMessageToCurrent("bot", data.error || "Something went wrong.");
+      setTyping(false);
+      if (response.status === 413) {
+        addMessageToCurrent("bot", "File too large. Please use smaller files (max 4.5MB total per message on this hosting plan).");
+      } else {
+        const data = await response.json().catch(() => ({}));
+        addMessageToCurrent("bot", data.error || "Something went wrong.");
+      }
       sendButton.disabled = false;
       messageInput.focus();
       return;
     }
-
-    setTyping(true);
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
