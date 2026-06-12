@@ -225,7 +225,9 @@ const startRecording = () => {
     if (isRecording && !recordingStoppedIntentionally) {
       const text = (pendingTranscript || messageInput.value).trim();
       if (text) {
-        submitMessage();
+        messageInput.value = text;
+        sendButton.disabled = false;
+        sendButton.click();
       }
     }
     stopRecordingUI();
@@ -260,7 +262,9 @@ const stopRecording = () => {
   stopRecordingUI();
   const text = (pendingTranscript || messageInput.value).trim();
   if (text) {
-    submitMessage();
+    messageInput.value = text;
+    sendButton.disabled = false;
+    sendButton.click();
   }
 };
 
