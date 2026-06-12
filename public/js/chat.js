@@ -864,7 +864,69 @@ const appendMessageToUI = (message) => {
   // Create message content
   const content = buildMessageContent(message.content);
   bubble.appendChild(content);
-  
+
+  // Generated image
+  if (message.generatedImage) {
+    const dataUrl = message.generatedImage;
+    const prompt = message.generatedPrompt || "";
+
+    const imgContainer = document.createElement("div");
+    imgContainer.style.textAlign = "center";
+    imgContainer.style.padding = "12px 0";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = prompt;
+    img.style.maxWidth = "100%";
+    img.style.maxHeight = "400px";
+    img.style.borderRadius = "12px";
+    img.style.border = "1px solid var(--border-color)";
+    img.style.cursor = "pointer";
+    img.addEventListener("click", () => openImageViewer(dataUrl, prompt));
+    imgContainer.appendChild(img);
+
+    const actionsRow = document.createElement("div");
+    actionsRow.style.display = "flex";
+    actionsRow.style.gap = "8px";
+    actionsRow.style.justifyContent = "center";
+    actionsRow.style.marginTop = "8px";
+
+    const makeActionBtn = (label, onClick) => {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.style.cssText = "background:transparent;border:1px solid var(--border-color);border-radius:8px;padding:6px 14px;color:var(--text-primary);cursor:pointer;font-size:13px;font-family:inherit;transition:all 0.2s ease";
+      btn.addEventListener("mouseenter", () => { btn.style.background = "var(--hover-bg)"; });
+      btn.addEventListener("mouseleave", () => { btn.style.background = "transparent"; });
+      btn.addEventListener("click", onClick);
+      return btn;
+    };
+
+    actionsRow.appendChild(makeActionBtn("Copy", async () => {
+      try {
+        const r = await fetch(dataUrl);
+        const blob = await r.blob();
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        showToast("Image copied", "success");
+      } catch (e) {
+        showToast("Failed to copy", "error");
+      }
+    }));
+    actionsRow.appendChild(makeActionBtn("Download", () => {
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = "generated-image.svg";
+      link.click();
+    }));
+    actionsRow.appendChild(makeActionBtn("Edit", () => {
+      openImageViewer(dataUrl, prompt);
+      imageViewerEditInput.value = prompt || "";
+      imageViewerEditPanel.classList.remove("hidden");
+      imageViewerEditInput.focus();
+    }));
+
+    imgContainer.appendChild(actionsRow);
+    content.appendChild(imgContainer);
+  }
+
   // Create actions container
   const actions = document.createElement("div");
   actions.className = "message-actions";
@@ -1209,80 +1271,8 @@ const generateImageAndAppend = async (prompt) => {
 };
 
 const appendGeneratedImage = (dataUrl, prompt) => {
-  welcomeScreen.classList.add("hidden");
-  chatArea.classList.remove("hidden");
-  const msgDiv = document.createElement("div");
-  msgDiv.className = "message bot";
-
-  const contentDiv = document.createElement("div");
-  contentDiv.className = "message-content";
-
-  const textEl = document.createElement("div");
-  textEl.className = "message-text";
-  textEl.textContent = 'Generated: "' + prompt + '"';
-  contentDiv.appendChild(textEl);
-
-  const imgContainer = document.createElement("div");
-  imgContainer.style.textAlign = "center";
-  imgContainer.style.padding = "12px 0";
-  const img = document.createElement("img");
-  img.src = dataUrl;
-  img.alt = prompt;
-  img.style.maxWidth = "100%";
-  img.style.maxHeight = "400px";
-  img.style.borderRadius = "12px";
-  img.style.border = "1px solid var(--border-color)";
-  img.style.cursor = "pointer";
-  img.addEventListener("click", () => openImageViewer(dataUrl, prompt));
-  imgContainer.appendChild(img);
-
-  const actionsRow = document.createElement("div");
-  actionsRow.style.display = "flex";
-  actionsRow.style.gap = "8px";
-  actionsRow.style.justifyContent = "center";
-  actionsRow.style.marginTop = "8px";
-
-  const makeActionBtn = (label, onClick) => {
-    const btn = document.createElement("button");
-    btn.textContent = label;
-    btn.style.cssText = "background:transparent;border:1px solid var(--border-color);border-radius:8px;padding:6px 14px;color:var(--text-primary);cursor:pointer;font-size:13px;font-family:inherit;transition:all 0.2s ease";
-    btn.addEventListener("mouseenter", () => { btn.style.background = "var(--hover-bg)"; });
-    btn.addEventListener("mouseleave", () => { btn.style.background = "transparent"; });
-    btn.addEventListener("click", onClick);
-    return btn;
-  };
-
-  actionsRow.appendChild(makeActionBtn("View", () => openImageViewer(dataUrl, prompt)));
-  actionsRow.appendChild(makeActionBtn("Copy", async () => {
-    try {
-      const r = await fetch(dataUrl);
-      const blob = await r.blob();
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      showToast("Image copied", "success");
-    } catch (e) {
-      showToast("Failed to copy", "error");
-    }
-  }));
-  actionsRow.appendChild(makeActionBtn("Download", () => {
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = "generated-image.svg";
-    link.click();
-  }));
-  const editBtn = makeActionBtn("Edit", () => {
-    openImageViewer(dataUrl, prompt);
-    imageViewerEditInput.value = prompt || "";
-    imageViewerEditPanel.classList.remove("hidden");
-    imageViewerEditInput.focus();
-  });
-  actionsRow.appendChild(editBtn);
-
-  contentDiv.appendChild(actionsRow);
-
-  msgDiv.appendChild(contentDiv);
-  messagesContainer.appendChild(msgDiv);
-  messagesContainer.scrollTop = messagesContainer.scrollHeight;
-  storeCurrentInHistory();
+  const displayText = 'Generated: "' + prompt + '"';
+  addMessageToCurrent("bot", displayText, { generatedImage: dataUrl, generatedPrompt: prompt });
 };
 
 // ----- PDF Export -----
@@ -1302,6 +1292,8 @@ const addMessageToCurrent = (role, content, media) => {
     if (media.audios && media.audios.length) message.audios = media.audios;
     if (media.videos && media.videos.length) message.videos = media.videos;
     if (media.pdfs && media.pdfs.length) message.pdfs = media.pdfs;
+    if (media.generatedImage) message.generatedImage = media.generatedImage;
+    if (media.generatedPrompt) message.generatedPrompt = media.generatedPrompt;
   }
   currentChat.messages.push(message);
   if (!currentChat.titleIsCustom) {
