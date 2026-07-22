@@ -45,7 +45,7 @@ Express app (src/app.js)
 - **Model:** `mimo-v2.5-free` (constant `VISION_MODEL` in `src/services/opencodeService.js`).
 - **Auth:** `OPENCODE_API_KEY` as Bearer token.
 - **Legacy:** `src/services/huggingFaceService.js` exists (explains package name `hf-chatbot`) but is **NOT used** by current controllers.
-- **Identity prompt engineering:** system prompt forces the model to identify as "Q-Dev-AI by Qonain", always claim video/PDF support, and never mention the underlying model vendor.
+- **Identity prompt engineering:** system prompt forces the model to identify as "Q-Dev-AI by Quonain Ejaz", always claim video/PDF support, and never mention the underlying model vendor.
 
 ---
 

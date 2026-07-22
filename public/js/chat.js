@@ -871,9 +871,18 @@ const loadCloudChats = async () => {
       });
     });
     chatHistory = serverChats;
-    if (serverChats.length) {
+
+    // Don't clobber a chat the user is actively using in THIS tab. If the
+    // current chat already has real conversation, keep showing it (and make
+    // sure it's represented in history). Only jump to the newest server chat
+    // when this tab has nothing in progress — e.g. a truly fresh load.
+    const currentHasConversation = currentChat.messages.some((m) => m.role === "user");
+    if (currentHasConversation) {
+      ensureCurrentInHistory();
+    } else if (serverChats.length) {
       setCurrentChat(serverChats[0]);
     }
+
     saveLocal();
     renderHistoryList();
   } catch (error) {
@@ -1957,7 +1966,14 @@ const startStreamEvent = (reader, decoder) => {
 
         for (const line of lines) {
           if (!line.trim()) continue;
-          const msg = JSON.parse(line);
+          let msg;
+          try {
+            msg = JSON.parse(line);
+          } catch (err) {
+            // A truncated/partial line: skip it rather than aborting the whole
+            // stream. The complete line will arrive in a later chunk.
+            continue;
+          }
 
           if (msg.type === "typing") {
             setTyping(msg.active);
@@ -2020,9 +2036,26 @@ const startStreamEvent = (reader, decoder) => {
           }
         }
 
-        const { done, value } = await reader.read();
-        if (done) return "done";
-        buffer += decoder.decode(value, { stream: true });
+        let readResult;
+        try {
+          readResult = await reader.read();
+        } catch (err) {
+          // Connection dropped mid-stream. If we already streamed some text,
+          // keep it instead of discarding the whole reply.
+          if (streamingMsg && streamingMsg.content.trim()) {
+            if (!currentChat.titleIsCustom) {
+              currentChat.title = getTitleFromMessages(currentChat.messages);
+              if (currentChatTitle) currentChatTitle.textContent = currentChat.title;
+            }
+            syncCurrentChatToHistoryIfExists();
+            persistState();
+            streamingMsg = null;
+            return "done";
+          }
+          throw err;
+        }
+        if (readResult.done) return "done";
+        buffer += decoder.decode(readResult.value, { stream: true });
       }
     }
   };

@@ -1,4 +1,4 @@
-const { generateVisionReply } = require("../services/opencodeService");
+const { streamVisionReply } = require("../services/opencodeService");
 const { generateImage } = require("../services/imageGenService");
 const {
   MAX_HISTORY_LENGTH,
@@ -97,21 +97,24 @@ const postMessage = async (req, res, next) => {
         ? incomingHistory.slice(0, -1)
         : incomingHistory;
 
-    let reply;
-    if (hasMedia) {
-      reply = await generateVisionReply({ message: cleanMessage, history: historyForModel, images, audios, videos, pdfs });
-    } else {
-      reply = await generateVisionReply({ message: cleanMessage, history: historyForModel, images: [], audios: [], videos: [], pdfs: [] });
+    const streamArgs = hasMedia
+      ? { message: cleanMessage, history: historyForModel, images, audios, videos, pdfs }
+      : { message: cleanMessage, history: historyForModel, images: [], audios: [], videos: [], pdfs: [] };
+
+    let started = false;
+
+    for await (const delta of streamVisionReply(streamArgs)) {
+      if (!delta) continue;
+      if (!started) {
+        send({ type: "typing", active: false });
+        send({ type: "start" });
+        started = true;
+      }
+      send({ type: "chunk", text: sanitizeMessage(delta) });
     }
 
-    const cleanReply = sanitizeMessage(reply);
-    const words = cleanReply.match(/\S+\s*/g) || [];
-
-    send({ type: "start" });
-
-    for (let wi = 0; wi < words.length; wi++) {
-      send({ type: "chunk", text: words[wi] });
-      await new Promise((r) => setTimeout(r, 35));
+    if (!started) {
+      throw new Error("No content received from OpenCode API.");
     }
 
     send({ type: "typing", active: false });

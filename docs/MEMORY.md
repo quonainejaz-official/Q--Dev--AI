@@ -10,7 +10,7 @@
 ## 🔑 Critical facts (read before coding)
 
 - **AI provider is OpenCode Zen, NOT Hugging Face.** Live path: `src/services/opencodeService.js` → `https://opencode.ai/zen/v1/chat/completions`, model `mimo-v2.5-free`, key `OPENCODE_API_KEY`. The package name `hf-chatbot` and `huggingFaceService.js` are **legacy/unused**.
-- **Identity is prompt-forced:** the model must always say it is "Q-Dev-AI by Qonain", always claim video/PDF support, and never name the underlying vendor. Don't remove these system-prompt guards casually.
+- **Identity is prompt-forced:** the model must always say it is "Q-Dev-AI by Quonain Ejaz", always claim video/PDF support, and never name the underlying vendor. Don't remove these system-prompt guards casually.
 - **Streaming is faked client-side** (~35ms/word via newline-delimited JSON). Not real token streaming.
 - **App degrades gracefully:** no `MONGODB_URI` → guest-only; no `GOOGLE_CLIENT_ID` → no Google button; no Cloudinary → media offload disabled.
 - **Serverless (Vercel):** all traffic → `api/index.js` → `src/app.js`. No persistent memory between invocations; Mongo connection cached in `db.js` (which also overrides DNS).

@@ -10,7 +10,7 @@
 
 A full-stack, multimodal AI chatbot web app. Users chat with an AI using **text, images, audio, video, and PDFs**, generate SVG images, keep chat history, optionally create accounts to sync chats across devices, and export conversations to PDF.
 
-- **Product / brand name:** Q-Dev-AI (created by "Qonain")
+- **Product / brand name:** Q-Dev-AI (created by "Quonain Ejaz")
 - **Package name:** `hf-chatbot` (legacy — see note below)
 - **Repo:** github.com/quonainejaz-official/Q--Dev--AI
 - **Stack:** Node.js + Express + EJS, vanilla JS frontend, MongoDB Atlas, Cloudinary, JWT/Google auth
