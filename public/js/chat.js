@@ -1458,8 +1458,29 @@ const PRINT_LOGO_SVG =
   '<circle cx="12" cy="12" r="3" fill="#1a73e8"></circle></svg>';
 
 const getExportTitle = () => {
-  if (currentChat && currentChat.title && currentChat.title !== "New Chat") {
-    return currentChat.title;
+  if (currentChat) {
+    // A title the user typed themselves is used exactly as-is.
+    if (
+      currentChat.titleIsCustom &&
+      currentChat.title &&
+      currentChat.title !== "New Chat"
+    ) {
+      return currentChat.title;
+    }
+    // Otherwise use the full first user message. The stored title is capped at
+    // 32 chars (with "...") for the sidebar; the PDF should show the full text.
+    if (Array.isArray(currentChat.messages)) {
+      const firstUser = currentChat.messages.find((m) => m.role === "user");
+      let full = firstUser && firstUser.content ? firstUser.content.trim() : "";
+      if (full) {
+        full = full.split("\n")[0].trim(); // first line only
+        if (full.length > 140) full = full.slice(0, 140).trim();
+        return full;
+      }
+    }
+    if (currentChat.title && currentChat.title !== "New Chat") {
+      return currentChat.title;
+    }
   }
   const el = document.getElementById("currentChatTitle");
   const t = (el && el.textContent ? el.textContent : "").trim();
