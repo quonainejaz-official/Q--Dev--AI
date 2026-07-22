@@ -10,12 +10,18 @@
     "test": "jest"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.10.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "express-session": "^1.18.0",
+    "google-auth-library": "^10.9.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.8.0",
     "morgan": "^1.10.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^6.0.227",

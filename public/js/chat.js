@@ -774,17 +774,135 @@ const loadStoredCurrent = () => {
 const stripMedia = (messages) =>
   messages.map(({ images, audios, videos, pdfs, ...rest }) => rest);
 
+const saveLocal = () => {
+  try {
+    const historyToSave = chatHistory.map((chat) => ({
+      ...chat,
+      messages: chat.messages
+    }));
+    const currentToSave = {
+      ...currentChat,
+      messages: currentChat.messages
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(historyToSave));
+    localStorage.setItem(CURRENT_KEY, JSON.stringify(currentToSave));
+  } catch (error) {
+    // localStorage can overflow with large base64 media; ignore.
+  }
+};
+
 const persistState = () => {
-  const historyToSave = chatHistory.map((chat) => ({
-    ...chat,
-    messages: chat.messages
-  }));
-  const currentToSave = {
-    ...currentChat,
-    messages: currentChat.messages
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(historyToSave));
-  localStorage.setItem(CURRENT_KEY, JSON.stringify(currentToSave));
+  saveLocal();
+  scheduleCloudSave();
+};
+
+/* ---------------------------------------------------------------------------
+ * Cloud sync (only active when the user is logged in)
+ * ------------------------------------------------------------------------- */
+let authUser = null;
+const clientIdToServerId = {}; // currentChat.id -> Mongo _id
+
+const isLoggedIn = () => Boolean(authUser);
+
+const apiFetch = (path, opts = {}) =>
+  fetch(path, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    ...opts
+  });
+
+const cloudSaveChat = async (chat) => {
+  if (!isLoggedIn() || !chat || !Array.isArray(chat.messages) || !chat.messages.length) {
+    return;
+  }
+  try {
+    const res = await apiFetch("/api/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        clientId: chat.id,
+        title: chat.title,
+        titleIsCustom: chat.titleIsCustom,
+        messages: chat.messages
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.chat && data.chat._id) {
+        clientIdToServerId[chat.id] = data.chat._id;
+      }
+    }
+  } catch (error) {
+    // Offline / transient: localStorage still has the data, retried next save.
+  }
+};
+
+let cloudSaveTimer = null;
+const scheduleCloudSave = () => {
+  if (!isLoggedIn()) return;
+  if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(() => cloudSaveChat(currentChat), 1200);
+};
+
+const cloudDeleteChat = async (clientId) => {
+  if (!isLoggedIn()) return;
+  const serverId = clientIdToServerId[clientId];
+  if (!serverId) return;
+  try {
+    await apiFetch(`/api/chats/${serverId}`, { method: "DELETE" });
+    delete clientIdToServerId[clientId];
+  } catch (error) {
+    // ignore
+  }
+};
+
+// Replace local history with the user's chats stored on the server.
+const loadCloudChats = async () => {
+  try {
+    const res = await apiFetch("/api/chats");
+    if (!res.ok) return;
+    const data = await res.json();
+    const serverChats = (data.chats || []).map((c) => {
+      clientIdToServerId[c.id] = c._id;
+      return normalizeChatEntry({
+        id: c.id,
+        title: c.title,
+        titleIsCustom: c.titleIsCustom,
+        messages: c.messages
+      });
+    });
+    chatHistory = serverChats;
+    if (serverChats.length) {
+      setCurrentChat(serverChats[0]);
+    }
+    saveLocal();
+    renderHistoryList();
+  } catch (error) {
+    // ignore
+  }
+};
+
+// Upload any guest chats sitting in localStorage into the account.
+const migrateGuestChats = async () => {
+  const local = chatHistory.filter(
+    (c) => Array.isArray(c.messages) && c.messages.length
+  );
+  if (!local.length) return;
+  try {
+    await apiFetch("/api/chats/migrate", {
+      method: "POST",
+      body: JSON.stringify({
+        chats: local.map((c) => ({
+          clientId: c.id,
+          id: c.id,
+          title: c.title,
+          titleIsCustom: c.titleIsCustom,
+          messages: c.messages
+        }))
+      })
+    });
+  } catch (error) {
+    // ignore
+  }
 };
 
 const getTitleFromMessages = (messages) => {
@@ -1093,6 +1211,8 @@ const renderHistoryList = () => {
           currentChat.title = newTitle;
           currentChat.titleIsCustom = true;
           if (currentChatTitle) currentChatTitle.textContent = newTitle;
+        } else {
+          cloudSaveChat(chat);
         }
         persistState();
         renderHistoryList();
@@ -1185,6 +1305,7 @@ if (editChatTitleBtn) {
 }
 
 const deleteHistory = (id) => {
+  cloudDeleteChat(id);
   chatHistory = chatHistory.filter((chat) => chat.id !== id);
   persistState();
   renderHistoryList();
@@ -1601,10 +1722,12 @@ const buildMessageContent = (content) => {
         return;
       }
 
-      // Header: ### Title
-      if (trimmedLine.startsWith("### ")) {
+      // Header: # Title ... ###### Title (levels 1-6)
+      const headerMatch = /^(#{1,6})\s+(.*)$/.exec(trimmedLine);
+      if (headerMatch) {
         closeList();
-        htmlContent += `<h3 class="msg-h3">${formatText(trimmedLine.slice(4))}</h3>`;
+        const level = headerMatch[1].length;
+        htmlContent += `<h${level} class="msg-h${level}">${formatText(headerMatch[2])}</h${level}>`;
         return;
       }
 
@@ -1690,29 +1813,44 @@ const initializeMessages = async () => {
 };
 
 const handleNewChat = () => {
-  showModal(
-    "New Chat",
-    "Start a new chat? Your current chat will be saved to history.",
-    async () => {
-      storeCurrentInHistory();
-      currentChat = createChat();
-      renderMessages([]);
-      renderHistoryList();
-      persistState();
-      addMessageToCurrent(
-        "bot",
-        "Hello! I am Q-Dev-AI, your coding assistant. Ask me anything!"
-      );
-      closeSidebarOnMobile();
-      showToast("New chat started.", "success");
-    }
+  const hasUserMessages = currentChat.messages.some((m) => m.role === "user");
+
+  // Already on a fresh chat with no real conversation — no need to create another.
+  if (!hasUserMessages) {
+    renderMessages(currentChat.messages);
+    closeSidebarOnMobile();
+    messageInput.focus();
+    return;
+  }
+
+  storeCurrentInHistory();
+  currentChat = createChat();
+  renderMessages([]);
+  renderHistoryList();
+  addMessageToCurrent(
+    "bot",
+    "Hello! I am Q-Dev-AI, your coding assistant. Ask me anything!"
   );
+  persistState();
+  closeSidebarOnMobile();
+  messageInput.focus();
+  showToast("New chat started.", "success");
 };
 
 newChatButton.addEventListener("click", handleNewChat);
 if (newChatButtonMain) {
   newChatButtonMain.addEventListener("click", handleNewChat);
 }
+
+const isNearBottom = () => {
+  const threshold = 120;
+  return (
+    messagesContainer.scrollHeight -
+      messagesContainer.scrollTop -
+      messagesContainer.clientHeight <
+    threshold
+  );
+};
 
 const startStreamEvent = (reader, decoder) => {
   let buffer = "";
@@ -1735,12 +1873,23 @@ const startStreamEvent = (reader, decoder) => {
             currentChat.messages.push(streamingMsg);
             appendMessageToUI(streamingMsg);
           } else if (msg.type === "chunk" && streamingMsg) {
+            const stick = isNearBottom();
             streamingMsg.content += decodeHtml(msg.text);
             const lastBubble = messagesContainer.lastElementChild;
             if (lastBubble) {
-              const tb = lastBubble.querySelector(".message-text");
-              if (tb) tb.textContent = streamingMsg.content;
-              messagesContainer.scrollTop = messagesContainer.scrollHeight;
+              const wrapper = lastBubble.querySelector(".message-content");
+              if (wrapper) {
+                const rebuilt = buildMessageContent(streamingMsg.content);
+                wrapper.innerHTML = "";
+                while (rebuilt.firstChild) {
+                  wrapper.appendChild(rebuilt.firstChild);
+                }
+              }
+              // Only auto-scroll if the user was already at the bottom.
+              // This lets the user scroll up and read while streaming.
+              if (stick) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+              }
             }
           } else if (msg.type === "done") {
             if (streamingMsg) {
@@ -1955,4 +2104,215 @@ const submitMessage = async () => {
   }
 };
 
+/* ---------------------------------------------------------------------------
+ * Authentication UI
+ * ------------------------------------------------------------------------- */
+const loginButton = document.getElementById("loginButton");
+const accountChip = document.getElementById("accountChip");
+const accountAvatar = document.getElementById("accountAvatar");
+const accountName = document.getElementById("accountName");
+const accountEmail = document.getElementById("accountEmail");
+const logoutButton = document.getElementById("logoutButton");
+const authModal = document.getElementById("authModal");
+const authClose = document.getElementById("authClose");
+const authTitle = document.getElementById("authTitle");
+const authTabs = document.querySelectorAll(".auth-tab");
+const authForm = document.getElementById("authForm");
+const authNameRow = document.getElementById("authNameRow");
+const authName = document.getElementById("authName");
+const authEmail = document.getElementById("authEmail");
+const authPassword = document.getElementById("authPassword");
+const authError = document.getElementById("authError");
+const authSubmit = document.getElementById("authSubmit");
+
+let authMode = "login";
+let googleInitialized = false;
+
+const updateAuthUI = () => {
+  if (authUser) {
+    if (loginButton) loginButton.classList.add("hidden");
+    if (accountChip) accountChip.classList.remove("hidden");
+    if (accountName) accountName.textContent = authUser.name || "Account";
+    if (accountEmail) accountEmail.textContent = authUser.email || "";
+    if (accountAvatar) {
+      if (authUser.avatar) {
+        accountAvatar.style.backgroundImage = `url(${authUser.avatar})`;
+        accountAvatar.textContent = "";
+      } else {
+        accountAvatar.style.backgroundImage = "";
+        accountAvatar.textContent = (authUser.name || authUser.email || "?")
+          .charAt(0)
+          .toUpperCase();
+      }
+    }
+  } else {
+    if (loginButton) loginButton.classList.remove("hidden");
+    if (accountChip) accountChip.classList.add("hidden");
+  }
+};
+
+const showAuthError = (msg) => {
+  if (!authError) return;
+  authError.textContent = msg;
+  authError.classList.remove("hidden");
+};
+
+const setAuthMode = (mode) => {
+  authMode = mode;
+  authTabs.forEach((t) =>
+    t.classList.toggle("active", t.dataset.mode === mode)
+  );
+  if (authTitle)
+    authTitle.textContent =
+      mode === "login" ? "Welcome back" : "Create your account";
+  if (authNameRow) authNameRow.classList.toggle("hidden", mode !== "register");
+  if (authSubmit)
+    authSubmit.textContent = mode === "login" ? "Log in" : "Sign up";
+  if (authError) authError.classList.add("hidden");
+};
+
+const initGoogleButton = () => {
+  const clientId = window.__GOOGLE_CLIENT_ID__;
+  if (!clientId || googleInitialized || typeof google === "undefined") return;
+  try {
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response) => {
+        try {
+          const res = await apiFetch("/api/auth/google", {
+            method: "POST",
+            body: JSON.stringify({ credential: response.credential })
+          });
+          const data = await res.json();
+          if (res.ok && data.user) {
+            await onLoginSuccess(data.user);
+          } else {
+            showAuthError(data.error || "Google sign-in failed.");
+          }
+        } catch (error) {
+          showAuthError("Google sign-in failed.");
+        }
+      }
+    });
+    google.accounts.id.renderButton(document.getElementById("googleBtn"), {
+      theme: "outline",
+      size: "large",
+      width: 320
+    });
+    googleInitialized = true;
+  } catch (error) {
+    // GSI not ready yet
+  }
+};
+
+const openAuthModal = () => {
+  if (!authModal) return;
+  setAuthMode("login");
+  if (authForm) authForm.reset();
+  authModal.classList.remove("hidden");
+  // Google script loads async; retry a few times until ready.
+  let tries = 0;
+  const tryInit = () => {
+    initGoogleButton();
+    if (!googleInitialized && tries < 20) {
+      tries += 1;
+      setTimeout(tryInit, 200);
+    }
+  };
+  tryInit();
+};
+
+const closeAuthModal = () => {
+  if (authModal) authModal.classList.add("hidden");
+};
+
+const onLoginSuccess = async (user) => {
+  authUser = user;
+  updateAuthUI();
+  closeAuthModal();
+  await migrateGuestChats();
+  await loadCloudChats();
+  showToast(`Signed in as ${user.name || user.email}.`, "success");
+};
+
+const handleAuthSubmit = async (event) => {
+  event.preventDefault();
+  if (authError) authError.classList.add("hidden");
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+  const name = authName ? authName.value.trim() : "";
+
+  if (!email || !password) {
+    showAuthError("Email and password are required.");
+    return;
+  }
+
+  authSubmit.disabled = true;
+  const originalText = authSubmit.textContent;
+  authSubmit.textContent = "Please wait...";
+
+  try {
+    const path = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+    const body =
+      authMode === "login"
+        ? { email, password }
+        : { email, password, name };
+    const res = await apiFetch(path, {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (res.ok && data.user) {
+      await onLoginSuccess(data.user);
+    } else {
+      showAuthError(data.error || "Something went wrong.");
+    }
+  } catch (error) {
+    showAuthError("Network error. Please try again.");
+  } finally {
+    authSubmit.disabled = false;
+    authSubmit.textContent = originalText;
+  }
+};
+
+const handleLogout = async () => {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } catch (error) {
+    // ignore
+  }
+  authUser = null;
+  Object.keys(clientIdToServerId).forEach((k) => delete clientIdToServerId[k]);
+  updateAuthUI();
+  showToast("Logged out.", "success");
+};
+
+const checkAuth = async () => {
+  try {
+    const res = await apiFetch("/api/auth/me");
+    const data = await res.json();
+    authUser = data.user || null;
+  } catch (error) {
+    authUser = null;
+  }
+  updateAuthUI();
+  if (authUser) {
+    await loadCloudChats();
+  }
+};
+
+if (loginButton) loginButton.addEventListener("click", openAuthModal);
+if (authClose) authClose.addEventListener("click", closeAuthModal);
+if (logoutButton) logoutButton.addEventListener("click", handleLogout);
+if (authForm) authForm.addEventListener("submit", handleAuthSubmit);
+authTabs.forEach((t) =>
+  t.addEventListener("click", () => setAuthMode(t.dataset.mode))
+);
+if (authModal) {
+  authModal.addEventListener("click", (e) => {
+    if (e.target === authModal) closeAuthModal();
+  });
+}
+
 initializeMessages();
+checkAuth();
