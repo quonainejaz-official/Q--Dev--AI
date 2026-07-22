@@ -1443,11 +1443,83 @@ const appendGeneratedImage = (dataUrl, prompt) => {
   addMessageToCurrent("bot", displayText, { generatedImage: dataUrl, generatedPrompt: prompt });
 };
 
-// ----- PDF Export -----
-const exportChatAsPdf = () => {
-  window.print();
+// ----- PDF Export (native browser print) -----
+// A dedicated print document is built as a table so the header (thead) and
+// footer (tfoot) repeat on every printed page with reserved space. Text stays
+// selectable and the on-screen formatting is preserved.
+const PDF_SITE_URL = "https://ai.qdevaol.site";
+const PDF_SITE_LABEL = "ai.qdevaol.site";
+
+// Small logo mark used in the running print header.
+const PRINT_LOGO_SVG =
+  '<svg viewBox="0 0 24 24" class="prh-logo" xmlns="http://www.w3.org/2000/svg">' +
+  '<circle cx="12" cy="12" r="9" stroke="#1a73e8" stroke-width="2.5" fill="none"></circle>' +
+  '<line x1="18" y1="18" x2="22" y2="22" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"></line>' +
+  '<circle cx="12" cy="12" r="3" fill="#1a73e8"></circle></svg>';
+
+const getExportTitle = () => {
+  if (currentChat && currentChat.title && currentChat.title !== "New Chat") {
+    return currentChat.title;
+  }
+  const el = document.getElementById("currentChatTitle");
+  const t = (el && el.textContent ? el.textContent : "").trim();
+  return t && t !== "New Chat" ? t : "Conversation";
 };
 
+const exportChatAsPdf = () => {
+  const title = getExportTitle();
+  const now = new Date();
+  const dateStr = now.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+  const timeStr = now.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  const stampStr = dateStr + " · " + timeStr;
+
+  const existing = document.getElementById("printRoot");
+  if (existing) existing.remove();
+
+  const root = document.createElement("div");
+  root.id = "printRoot";
+  root.innerHTML =
+    '<table class="print-doc">' +
+    "<thead><tr><td>" +
+    '<div class="print-run-header"><span class="prh-brand">' +
+    PRINT_LOGO_SVG +
+    "<span>Q-Dev-AI</span></span></div>" +
+    "</td></tr></thead>" +
+    "<tfoot><tr><td>" +
+    '<div class="print-run-footer">' +
+    '<span class="prf-left"><a href="' +
+    PDF_SITE_URL +
+    '">' +
+    PDF_SITE_LABEL +
+    "</a></span>" +
+    '<span class="prf-mid">Q-Dev-AI</span>' +
+    '<span class="prf-right">' +
+    escapeHtml(stampStr) +
+    "</span>" +
+    "</div>" +
+    "</td></tr></tfoot>" +
+    "<tbody><tr><td>" +
+    '<h1 class="print-doc-title">' +
+    escapeHtml(title) +
+    "</h1>" +
+    '<div class="print-doc-body"></div>' +
+    "</td></tr></tbody>" +
+    "</table>";
+
+  root.querySelector(".print-doc-body").appendChild(messagesContainer.cloneNode(true));
+  document.body.appendChild(root);
+
+  window.print();
+
+  window.setTimeout(() => root.remove(), 800);
+};
 // ----- Export PDF Event Listener -----
 if (exportPdfBtn) {
   exportPdfBtn.addEventListener("click", exportChatAsPdf);

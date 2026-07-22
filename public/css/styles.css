@@ -1906,43 +1906,147 @@ body {
 
 
 /* ----- Print Styles for PDF Export ----- */
+/* Print document root — built on export, hidden on screen. */
+#printRoot {
+  display: none;
+}
+
+/* margin:0 removes the browser's own date/URL/page-number strip. Our running
+   header (thead) and footer (tfoot) provide branding that repeats on every
+   page with reserved space. */
+@page {
+  margin: 0;
+  size: A4;
+}
+
 @media print {
+  html,
   body {
-    background: white;
-    color: black;
+    background: #ffffff !important;
+    color: #000 !important;
     overflow: visible;
   }
-  .sidebar,
-  .input-container,
-  .chat-header-actions,
-  .header-action-btn,
+  /* Hide the live app; only the print document is shown. */
+  .app-container {
+    display: none !important;
+  }
+  .code-copy-btn,
+  .message-action-btn,
   .typing {
     display: none !important;
   }
-  .app-container {
+
+  #printRoot {
     display: block;
-    height: auto;
+  }
+
+  .print-doc {
     width: 100%;
+    border-collapse: collapse;
   }
-  .main-content {
+  .print-doc thead {
+    display: table-header-group;
+  }
+  .print-doc tfoot {
+    display: table-footer-group;
+  }
+  .print-doc > tbody > tr > td {
+    padding: 0;
+    vertical-align: top;
+  }
+
+  /* Running header: logo + brand at the top-right, repeats every page. */
+  .print-run-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 8mm 12mm 4mm 12mm;
+  }
+  .prh-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a73e8;
+  }
+  .prh-logo {
+    width: 20px;
+    height: 20px;
+    flex: none;
+  }
+
+  /* Document title: centered, large, shown once at the top of the content. */
+  .print-doc-title {
+    text-align: center;
+    font-size: 24px;
+    font-weight: 800;
+    color: #111;
+    margin: 2mm 12mm 8mm 12mm;
+    padding-bottom: 5mm;
+    border-bottom: 1.5px solid #1a73e8;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+
+  .print-doc-body {
+    padding: 0 12mm;
+  }
+
+  /* Running footer: site link (left), brand (center), timestamp (right). */
+  .print-run-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4mm 12mm 8mm 12mm;
+    font-size: 9px;
+    border-top: 1px solid #e5e5e5;
+  }
+  .print-run-footer .prf-left a {
+    color: #1a73e8;
+    text-decoration: none;
+  }
+  .print-run-footer .prf-mid {
+    color: #1a73e8;
+    font-weight: 700;
+  }
+  .print-run-footer .prf-right {
+    color: #777;
+  }
+
+  /* Force light backgrounds so the dark theme doesn't bleed into the page. */
+  .messages,
+  .message,
+  .message-content {
+    background: #ffffff !important;
+    color: #000 !important;
+  }
+
+  /* Cloned messages must be fully visible: the on-screen fadeIn animation
+     starts at opacity:0, which would leave the printed content blank. */
+  #printRoot .message,
+  #printRoot .message-content,
+  #printRoot .message-text {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* ---- Messages layout ---- */
+  .messages {
     display: block;
     height: auto;
     overflow: visible;
-  }
-  .chat-area {
-    display: block !important;
-    overflow: visible;
-  }
-  .chat-header {
-    border-bottom: 1px solid #ccc;
-  }
-  .messages {
-    overflow: visible;
-    padding: 20px;
+    padding: 0 0 2mm 0;
     max-width: 100%;
   }
-  .message {
-    page-break-inside: avoid;
+  /* Let long content flow across pages instead of jumping whole messages to
+     the next page (which left large empty gaps). */
+  .message,
+  .message-content,
+  .message-text {
+    page-break-inside: auto;
+    break-inside: auto;
   }
   .message-text {
     color: black;
@@ -1959,14 +2063,31 @@ body {
     background: #eee;
     color: #333;
   }
+
+  /* ---- Code blocks: WRAP instead of horizontal scroll (no scroll in PDF) ---- */
   .code-block-container {
     border: 1px solid #ccc;
+    overflow: visible !important;
+    page-break-inside: auto;
+    break-inside: auto;
   }
+  .code-block-container pre {
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    max-width: 100% !important;
+  }
+  .code-block-container code {
+    color: #333;
+    white-space: pre-wrap !important;
+    word-break: break-word;
+  }
+  /* keep the language label with the first lines, don't orphan the header */
   .code-block-header {
     background: #f5f5f5;
     border-bottom: 1px solid #ccc;
+    page-break-after: avoid;
   }
-  .code-block-container code { color: #333; }
   .token-keyword { color: #d73a49; }
   .token-function { color: #6f42c1; }
   .token-string { color: #032f62; }
