@@ -54,8 +54,8 @@ Express app (src/app.js)
 1. Client (`chat.js`) gathers text + attachments, POSTs to `/api/message`.
 2. `chatController.postMessage` validates/sanitizes input (`utils/messageUtils.js`).
 3. Attachments assembled into multimodal parts: `image_url`, `input_audio`, video → image frames, PDF → extracted text.
-4. `opencodeService.generateVisionReply` calls the Zen API.
-5. Response streamed to client as newline-delimited JSON events: `type: typing | start | chunk | done | error` (~35ms/word — **pseudo-streaming**, not true token streaming).
+4. `opencodeService.streamVisionReply` calls the Zen API and yields delta chunks via async generator.
+5. `chatController.postMessage` streams response to client as newline-delimited JSON events: `type: typing | start | chunk | done | error` (real token-level streaming).
 6. Client renders markdown + syntax highlighting incrementally.
 
 ## 5. Request Flow — Image Generation
@@ -102,6 +102,7 @@ Express app (src/app.js)
 
 ## 10. Known Architectural Notes
 
-- Streaming is simulated client-side, not true SSE/token streaming (README mentions old `/api/stream` — outdated).
+- Streaming is real token-level SSE/chunked from OpenCode Zen (`opencodeService.streamVisionReply` → async generator → `chatController.postMessage` → newline-delimited JSON).
+- Test suite: 62 tests across `tests/` covering auth, chats CRUD/migration, chat controller, image gen, messageUtils. All external services fully mocked.
 - `express-session` is a dependency but the session flow is largely stubbed; auth is JWT-based.
 - `db.js` overrides DNS servers (`DNS_SERVERS`, default `8.8.8.8,1.1.1.1`) to work around Atlas SRV lookups in serverless.

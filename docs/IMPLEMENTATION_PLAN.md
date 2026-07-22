@@ -41,10 +41,10 @@
 ---
 
 ## Phase 6 — Hardening & Cleanup (🟡 In progress / next)
+- ✅ True token streaming — SSE/chunked streaming from OpenCode Zen (`opencodeService.js`, `chatController.js`)
+- ✅ Test coverage — 62 tests across auth, chats CRUD/migration, chat controller, image gen, messageUtils (`tests/`)
 - ⬜ Remove/retire unused `huggingFaceService.js`; rename package from `hf-chatbot`
 - ⬜ Update README (references outdated `/api/stream` SSE API)
-- 🟡 Test coverage — only `messageUtils.test.js` exists; add controller/service tests
-- ⬜ True token streaming (replace client-side simulated streaming)
 - ⬜ Centralize/config-check secrets; document all env vars (see [SETUP.md](SETUP.md))
 - ⬜ Error observability / logging beyond `morgan`
 

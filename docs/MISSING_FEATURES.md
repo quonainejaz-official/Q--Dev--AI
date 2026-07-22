@@ -10,7 +10,7 @@ Things not yet built or only partially working. Remove items as they're complete
 
 | # | Gap | Impact | Notes |
 |---|-----|--------|-------|
-| M1 | **True token streaming** | Medium | Responses are simulated client-side (~35ms/word), not streamed from the model. Real streaming would feel faster and cut latency. |
+| M1 | ~~**True token streaming**~~ | ~~Medium~~ | ✅ Done — responses are real SSE/chunked streamed from OpenCode Zen. |
 | M2 | **Raster image generation** | Medium | Only SVG output. No PNG/photo-realistic generation. |
 | M3 | **History API endpoints are stubs** | Low | `GET/PUT/DELETE /api/history` return empty/no-op; real history is `/api/chats` + localStorage. Either wire up or remove. |
 | M4 | **Chat search / filtering** | Medium | Chat list only groups under "Today"; no search, no date grouping. |
@@ -25,7 +25,7 @@ Things not yet built or only partially working. Remove items as they're complete
 
 | # | Gap | Impact | Notes |
 |---|-----|--------|-------|
-| T1 | **Test coverage** | High | Only `tests/messageUtils.test.js`. No tests for controllers, services, auth, chats. |
+| T1 | ~~**Test coverage**~~ | ~~High~~ | ✅ Done — 62 tests: auth flow, chats CRUD/migration, chat controller, image gen, messageUtils. CI runs `npm test` on Node 18/20/22. |
 | T2 | **Unused legacy code** | Low | `huggingFaceService.js` unused; package named `hf-chatbot`; README describes old SSE API. Clean up. |
 | T3 | **No soft-delete** | Low | `DELETE /api/chats/:id` is a hard delete — no recovery. |
 | T4 | **Cloudinary failure handling** | Medium | Verify behavior when Cloudinary is down/unset — does media get skipped, or does save fail? |

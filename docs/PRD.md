@@ -26,7 +26,7 @@ Q-Dev-AI is a free, multimodal AI coding & general-purpose chat assistant on the
 | # | Feature | Notes |
 |---|---------|-------|
 | F1 | **Multimodal chat** | Text + images + audio + video (as frames) + PDFs (text extracted server-side) |
-| F2 | **Streamed responses** | Word-by-word pseudo-streaming (~35ms/word) via newline-delimited JSON |
+| F2 | **Streamed responses** | Real SSE/chunked streaming from OpenCode Zen via async generator; newline-delimited JSON events to client |
 | F3 | **AI image generation** | `/imagine` command → model returns SVG → rendered as image, with copy/download/regenerate |
 | F4 | **User accounts** | Email+password (bcrypt) and Google Sign-In; 30-day JWT in httpOnly cookie |
 | F5 | **Guest mode + migration** | Works logged-out (localStorage); guest chats migrate to account on first login |
@@ -53,7 +53,6 @@ Q-Dev-AI is a free, multimodal AI coding & general-purpose chat assistant on the
 
 ## 5. Non-Goals (for now)
 
-- True token-level streaming from the model (currently simulated client-side).
 - Team/multi-user collaboration on a single chat.
 - Payment / subscription tiers.
 - Native mobile apps.
