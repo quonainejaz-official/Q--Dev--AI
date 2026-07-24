@@ -2,17 +2,25 @@ const jwt = require("jsonwebtoken");
 
 const COOKIE_NAME = "qai_token";
 
-const getJwtSecret = () => process.env.JWT_SECRET || "local-dev-jwt-secret";
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET is not set. Add it to your environment."
+    );
+  }
+  return secret;
+};
 
 const signToken = (userId) =>
-  jwt.sign({ uid: userId }, getJwtSecret(), { expiresIn: "30d" });
+  jwt.sign({ uid: userId }, getJwtSecret(), { expiresIn: "7d" });
 
 const setAuthCookie = (res, token) => {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   });
 };
 

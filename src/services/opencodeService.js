@@ -160,24 +160,6 @@ const buildMultimodalMessagesAll = async (history, text, images, audios, videos,
   return msgs;
 };
 
-const generateVisionReply = async ({ message, history, images, audios, videos, pdfs }) => {
-  const body = JSON.stringify({
-    model: pickModel({ images, audios, videos, pdfs }),
-    messages: await buildMultimodalMessagesAll(history, message, images, audios, videos, pdfs)
-  });
-
-  const response = await fetchWithRetry(body);
-
-  const data = await response.json();
-  const reply = parseReply(data);
-
-  if (!reply) {
-    throw new Error("Unable to parse response from OpenCode API.");
-  }
-
-  return reply;
-};
-
 const parseDelta = (payload) => {
   if (!payload) return null;
   return payload.choices?.[0]?.delta?.content || null;
@@ -225,4 +207,4 @@ async function* streamVisionReply({ message, history, images, audios, videos, pd
   }
 }
 
-module.exports = { generateVisionReply, streamVisionReply };
+module.exports = { streamVisionReply };

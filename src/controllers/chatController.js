@@ -1,5 +1,6 @@
-const { streamVisionReply } = require("../services/opencodeService");
+const { registry } = require("../providers/registry");
 const { generateImage } = require("../services/imageGenService");
+const { validateMedia } = require("../utils/mediaValidation");
 const {
   MAX_HISTORY_LENGTH,
   validateMessage,
@@ -38,31 +39,39 @@ const postGenerateImage = async (req, res, next) => {
     return res.status(400).json({ error: "Prompt is required." });
   }
 
-  res.setHeader("Content-Type", "text/plain");
+  res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const send = (obj) => { res.write(JSON.stringify(obj) + "\n"); };
+  const sendEvent = (type, data) => {
+    res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
 
-  send({ type: "typing", active: true });
+  sendEvent("typing", { active: true });
 
   try {
-    const imageDataUrl = await generateImage(prompt.trim());
-    send({ type: "typing", active: false });
-    send({ type: "image", dataUrl: imageDataUrl, prompt: prompt.trim() });
-    send({ type: "done" });
+    const result = await generateImage(prompt.trim());
+    sendEvent("typing", { active: false });
+    sendEvent("image", { dataUrl: result.dataUrl, prompt: prompt.trim(), method: result.method });
+    sendEvent("done", {});
     res.end();
   } catch (error) {
-    send({ type: "typing", active: false });
-    send({ type: "error", message: `Image generation failed: ${error.message}` });
+    sendEvent("typing", { active: false });
+    sendEvent("error", { message: `Image generation failed: ${error.message}` });
     res.end();
     next(error);
   }
 };
 
 const postMessage = async (req, res, next) => {
+  // Server-side media validation (1.1) — counts, sizes, total cap.
+  const mediaCheck = validateMedia(req.body || {});
+  if (!mediaCheck.valid) {
+    return res.status(400).json({ error: mediaCheck.errors.join(" ") });
+  }
+
   const images = req.body?.images;
   const audios = req.body?.audios;
   const videos = req.body?.videos;
@@ -79,15 +88,19 @@ const postMessage = async (req, res, next) => {
 
   const cleanMessage = hasMedia ? (validation.value || "") : validation.value;
 
-  res.setHeader("Content-Type", "text/plain");
+  // SSE (text/event-stream) — the standard for real-time streaming (2.3).
+  res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const send = (obj) => { res.write(JSON.stringify(obj) + "\n"); };
+  // SSE helper: send typed events as `event: <type>\ndata: <json>\n\n`.
+  const sendEvent = (type, data) => {
+    res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
 
-  send({ type: "typing", active: true });
+  sendEvent("typing", { active: true });
 
   try {
     const incomingHistory = normalizeIncomingHistory(req.body?.history);
@@ -101,28 +114,49 @@ const postMessage = async (req, res, next) => {
       ? { message: cleanMessage, history: historyForModel, images, audios, videos, pdfs }
       : { message: cleanMessage, history: historyForModel, images: [], audios: [], videos: [], pdfs: [] };
 
-    let started = false;
+    // Select providers for fallback (2.2) based on capabilities needed.
+    const providers = registry.selectAll({ vision: hasMedia, streaming: true });
+    let lastError = null;
+    let usage = null;
 
-    for await (const delta of streamVisionReply(streamArgs)) {
-      if (!delta) continue;
-      if (!started) {
-        send({ type: "typing", active: false });
-        send({ type: "start" });
-        started = true;
+    for (const provider of providers) {
+      try {
+        let started = false;
+        for await (const event of provider.stream(streamArgs)) {
+          if (event.type === "token" && event.text) {
+            if (!started) {
+              sendEvent("typing", { active: false });
+              sendEvent("start", {});
+              started = true;
+            }
+            sendEvent("chunk", { text: sanitizeMessage(event.text) });
+          } else if (event.type === "done") {
+            usage = event.usage;
+          }
+        }
+
+        if (!started) {
+          throw new Error("No content received from provider.");
+        }
+
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        console.error(`[chat] Provider ${provider.name} failed: ${error.message}`);
       }
-      send({ type: "chunk", text: sanitizeMessage(delta) });
     }
 
-    if (!started) {
-      throw new Error("No content received from OpenCode API.");
+    if (lastError) {
+      throw lastError;
     }
 
-    send({ type: "typing", active: false });
-    send({ type: "done" });
+    sendEvent("typing", { active: false });
+    sendEvent("done", { usage });
     res.end();
   } catch (error) {
-    send({ type: "typing", active: false });
-    send({ type: "error", message: "Unable to generate a response. Please try again." });
+    sendEvent("typing", { active: false });
+    sendEvent("error", { message: "Unable to generate a response. Please try again." });
     res.end();
     next(error);
   }

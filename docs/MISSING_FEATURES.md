@@ -1,6 +1,6 @@
 # Missing Features & Known Gaps — Q-Dev-AI
 
-**Last updated:** 2026-07-22
+**Last updated:** 2026-07-23
 
 Things not yet built or only partially working. Remove items as they're completed and note in [MEMORY.md](MEMORY.md).
 
@@ -25,14 +25,14 @@ Things not yet built or only partially working. Remove items as they're complete
 
 | # | Gap | Impact | Notes |
 |---|-----|--------|-------|
-| T1 | ~~**Test coverage**~~ | ~~High~~ | ✅ Done — 62 tests: auth flow, chats CRUD/migration, chat controller, image gen, messageUtils. CI runs `npm test` on Node 18/20/22. |
-| T2 | **Unused legacy code** | Low | `huggingFaceService.js` unused; package named `hf-chatbot`; README describes old SSE API. Clean up. |
-| T3 | **No soft-delete** | Low | `DELETE /api/chats/:id` is a hard delete — no recovery. |
+| T1 | ~~**Test coverage**~~ | ~~High~~ | ✅ Done — 96 tests: auth flow, chats CRUD/migration, chat controller, image gen, messageUtils, providers, prompt builder, model router. CI runs `npm test` on Node 18/20/22. |
+| T2 | ~~**Unused legacy code**~~ | ~~Low~~ | ✅ Done — `huggingFaceService.js` + `sessionService.js` deleted; dead exports removed; `express-session` dep removed. README still needs update. |
+| T3 | ~~**No soft-delete**~~ | ~~Low~~ | ✅ Done — `chat.softDelete()`, `chat.restore()`, pre-hook auto-filtering, TTL index auto-cleanup after 30 days. (`src/models/Chat.js`) |
 | T4 | **Cloudinary failure handling** | Medium | Verify behavior when Cloudinary is down/unset — does media get skipped, or does save fail? |
-| T5 | **Rate-limit is per-instance** | Medium | `express-rate-limit` in serverless is per-cold-instance memory — not globally accurate. Consider a shared store. |
-| T6 | **No request size guard server-side** | Medium | Upload limits are enforced client-side only; add server-side body-size limits. |
+| T5 | ~~**Rate-limit is per-instance**~~ | ~~Medium~~ | ✅ Done — backed with `rate-limit-mongo`; falls back to in-memory for guest mode. Auth + chats limiters added. |
+| T6 | ~~**No request size guard server-side**~~ | ~~Medium~~ | ✅ Done — `mediaValidation.js` enforces count + byte limits per type. `MAX_BODY_SIZE` env (default 4mb). |
 | T7 | **Accessibility** | Medium | Modals lack focus traps; ARIA/keyboard nav incomplete. |
-| T8 | **Observability** | Low | Only `morgan` logs; no structured error reporting/alerting. |
+| T8 | ~~**Observability**~~ | ~~Low~~ | ✅ Done — request IDs (`X-Request-Id`), structured error handler (hides internals in prod), health endpoints (`/healthz`, `/readyz`). |
 
 ---
 

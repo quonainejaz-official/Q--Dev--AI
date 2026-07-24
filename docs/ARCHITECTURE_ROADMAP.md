@@ -4,7 +4,7 @@
 >
 > **Status of this document:** PLANNING ONLY. No code has been changed. This is the resumable source of truth — if work stops, resume from the "Progress Tracker" at the bottom.
 >
-> Last updated: 2026-07-22
+> Last updated: 2026-07-23
 
 ---
 
@@ -183,7 +183,7 @@ Introduces structure the AI phases depend on. Some items require refactoring.
 
 The intelligence layer. Depends on Phase 2's provider abstraction (2.1) and schema redesign (2.14/3.8).
 
-## 3.1 Context Management
+## 3.1 Context Management ✅ Done
 
 **Why:** today only the last 20 messages are sent — no summarization, no relevance selection, no window budgeting. This is the core quality gap vs ChatGPT.
 
@@ -194,6 +194,10 @@ Design:
 - **Dynamic prompt building:** assemble context to fit a token budget (see 3.3).
 - **Context window optimization:** budget allocator — reserve tokens for system/safety/memory/docs/summary/recent/current, truncate lowest-priority first.
 
+- **Implemented:**
+  - `src/context/contextManager.js` — `ContextManager` class fetches recent messages, checks summarization threshold, builds context object for prompt builder.
+  - `src/prompt/promptBuilder.js` — layered prompt builder with token budgeting.
+  - `src/prompt/layers/` — system, recent, summary, memory layers with priority + token costs.
 - **Where:** new `src/context/` module invoked by [chatController.js](../src/controllers/chatController.js) before the provider call. Needs token counting (2.12) and message collection (3.8).
 - **Complexity:** L · **Risks:** summary drift/hallucination losing critical facts; extra latency+cost per turn · **Deps:** 2.1, 2.12, 3.8 · **Order:** after schema + provider layer.
 
@@ -209,7 +213,7 @@ Design:
 - **Where:** new `src/memory/` + `memories` collection (3.8); embedding calls via provider layer (`embed()`); write path after each turn (async/queued), read path in context builder (3.1/3.3).
 - **Complexity:** XL · **Risks:** embedding cost, privacy (must be per-user isolated + deletable — GDPR), retrieval of wrong/outdated memories · **Deps:** 2.1(+embed), 3.8, ideally 2.5 · **Order:** after context management basics.
 
-## 3.3 Prompt Builder (layered)
+## 3.3 Prompt Builder (layered) ✅ Done
 
 **Why:** the system prompt is a single inline string ([opencodeService.js:84](../src/services/opencodeService.js#L84)); there is no composition, no injection of memory/docs/summary.
 
@@ -221,11 +225,17 @@ System Prompt → Safety Layer → Developer Instructions → User Profile/Memor
 → Recent Messages → Current User Message → LLM
 ```
 
+- **Implemented:**
+  - `src/prompt/promptBuilder.js` — `buildPrompt(ctx)` composes layers to fit token budget. Returns messages array ready for any provider.
+  - `src/prompt/layers/system.js` — system prompt layer (priority 100, non-truncatable)
+  - `src/prompt/layers/recent.js` — recent messages layer (priority 80, budget-aware truncation)
+  - `src/prompt/layers/summary.js` — conversation summary layer (priority 70)
+  - `src/prompt/layers/memory.js` — retrieved memories layer (priority 65, importance-sorted)
 - **Where:** new `src/prompt/promptBuilder.js`. Each layer is a pure function `(ctx) => messages[]` returning typed segments with a priority + token cost. A budget allocator composes them to fit the model's context window (uses token counter 2.12 and context module 3.1). Called by [chatController.js](../src/controllers/chatController.js). Move the inline prompt into a versioned `src/prompt/layers/system.js`.
 - **Implementation notes:** layers pull from: user doc (profile), memory retrieval (3.2), doc retrieval (RAG), summary record (3.1), message collection (3.8). Safety layer is non-truncatable. Make prompts versioned + testable.
 - **Complexity:** L · **Risks:** prompt bloat/cost; layer ordering bugs; must keep safety layer immune to truncation · **Deps:** 3.1, 3.2, 2.12 · **Order:** alongside 3.1 (they co-evolve).
 
-## 3.4 Multi-Provider AI Layer *(= 2.1, expanded)*
+## 3.4 Multi-Provider AI Layer *(= 2.1, expanded)* ✅ Done
 
 **Why:** enable OpenAI, Claude, Gemini, DeepSeek, Groq, Together, OpenRouter, + OpenCode behind one interface.
 
@@ -236,7 +246,13 @@ System Prompt → Safety Layer → Developer Instructions → User Profile/Memor
   async *stream({ ... }) -> yields { type: 'token'|'tool_call'|'done', ... }
   async embed({ input, model }) -> { vectors, usage }   // optional
   ```
-- **Where:** `src/providers/{opencode,openai,anthropic,gemini,groq,together,openrouter}.js` + `registry.js`. Adapters normalize each vendor's request/response/streaming/tool schema to the common shape. OpenRouter alone covers many models — good early win.
+- **Where:** `src/providers/{opencode,openai,anthropic,gemini}.js` + `registry.js`. Adapters normalize each vendor's request/response/streaming/tool schema to the common shape.
+- **Providers implemented:**
+  - `OpenCodeProvider` — OpenCode Zen (`big-pickle` text, `mimo-v2.5-free` vision)
+  - `OpenAIProvider` — OpenAI API (`gpt-4o`, `gpt-4o-mini`, tool calling support)
+  - `AnthropicProvider` — Anthropic API (`claude-sonnet-4-20250514`, vision + tools)
+  - `GeminiProvider` — Google Generative AI (`gemini-2.0-flash`, 1M context window)
+- **Registry:** auto-registers providers based on env vars (`OPENCODE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`); fallback priority: OpenCode → OpenAI → Anthropic → Gemini.
 - **Complexity:** L (framework) + S–M per provider · **Risks:** feature drift between providers (tools/vision differ); normalizing streaming + tool-call formats · **Deps:** none (this IS the foundation) · **Order:** FIRST real Phase 2/3 work.
 
 ## 3.5 Tool Calling Framework (design only)
@@ -247,7 +263,7 @@ System Prompt → Safety Layer → Developer Instructions → User Profile/Memor
 - **Where:** `src/tools/` with one file per tool + `registry.js`; orchestration in a `src/agent/` loop that wraps the provider stream. Memory/PDF/ImageGen tools reuse existing services.
 - **Complexity:** XL · **Risks:** infinite tool loops (cap iterations), unsafe code execution (must sandbox — see 4.7), prompt-injection via tool output · **Deps:** 3.4 (tool-capable providers), 2.5 (heavy tools) · **Order:** after provider layer + streaming; implement tools incrementally in Phase 4.
 
-## 3.6 Media Pipeline — signed direct uploads
+## 3.6 Media Pipeline — signed direct uploads ✅ Done
 
 **Current:** base64 data URLs inside the JSON body → server → Cloudinary. Bloats payloads, hits the ~4.5MB Vercel cap, wastes serverless memory/time, double-transfers bytes.
 
@@ -259,7 +275,7 @@ System Prompt → Safety Layer → Developer Instructions → User Profile/Memor
 - **Where:** new `src/controllers/uploadController.js` + route; [cloudinaryService.js](../src/services/cloudinaryService.js) generates signatures; client upload widget in [public/js/chat.js](../public/js/chat.js). PDFs still need text extraction — do it in a worker (2.4) from the hosted URL.
 - **Complexity:** L · **Risks:** unvalidated/malicious uploads, orphan files, signature abuse · **Deps:** 1.1/1.2 (limits), ideally 2.5 (post-processing) · **Order:** after Phase 1; high ROI once large media matters.
 
-## 3.7 AI Cost Optimization — model routing
+## 3.7 AI Cost Optimization — model routing ✅ Done
 
 Routing decision inputs: task type, complexity, media presence, user tier, context size, latency budget.
 
@@ -271,11 +287,14 @@ Images           → real image model (see 4.4)
 Vision inputs    → vision-capable model
 ```
 
+- **Implemented:**
+  - `src/router/modelRouter.js` — `route(params)` picks cheapest capable provider+model. Heuristic-based: cost tiers (opencode < gemini < openai < anthropic), capability matching (vision, streaming), complexity routing.
+  - `getRoutingInfo(params)` — returns routing decision without executing (for logging/quota).
 - **How decisions are made:** a `router` that (a) uses cheap heuristics first (media present? code fences/keywords? length?), then (b) optionally a tiny classifier LLM call for ambiguous cases (cache results, 2.6). Respects a per-user cost budget/quota (token accounting 2.12). Always fall back to a safe default (2.2).
 - **Where:** `src/router/modelRouter.js`, called by [chatController.js](../src/controllers/chatController.js) before provider selection; picks provider+model from the registry (3.4) by capability + cost.
 - **Complexity:** L · **Risks:** misrouting hurts quality (route conservatively, prefer stronger model when uncertain); classifier adds latency/cost · **Deps:** 3.4, 2.12, 2.6 · **Order:** after provider layer + token accounting.
 
-## 3.8 Conversation Storage redesign
+## 3.8 Conversation Storage redesign ✅ Done
 
 **Recommendation: split into separate collections.**
 
@@ -287,7 +306,11 @@ Vision inputs    → vision-capable model
 | `memories` | Semantic memory + embeddings (3.2). Vector index. Per-user isolated, TTL for expiry. |
 | `attachments` | Media metadata (Cloudinary URL, type, size, ownerId, chatId) — dedup, lifecycle/cleanup, moderation status. Decouples media from message text. |
 
-- **Why overall:** the current embedded model blocks pagination, per-message metadata, token accounting, and memory — all Phase 3 needs. Separation enables independent scaling, indexing, and lifecycle (TTL/soft-delete) per concern.
+- **Implemented:**
+  - `src/models/Message.js` — standalone collection with `chatId`, `userId`, `role`, `content`, `timestamp`, media arrays, token accounting fields. Indexes: `{chatId, timestamp}`, `{userId, timestamp}`.
+  - `src/models/Chat.js` — removed embedded `messages[]`, added `messageCount` field.
+  - `src/controllers/chatsController.js` — CRUD now works with both Chat + Message collections. `getChat` fetches messages from Message collection. `createChat`/`updateChat`/`migrateChats` write to both.
+  - `src/scripts/migrate-messages.js` — idempotent migration script for existing embedded messages.
 - **Where:** new models in [src/models/](../src/models/); rewrite [chatsController.js](../src/controllers/chatsController.js) CRUD; **data migration script** from embedded `messages[]` → `messages` collection.
 - **Complexity:** L–XL (with migration) · **Risks:** migration correctness, more queries per read (mitigate with proper indexes 2.13 + projections), transactional writes across collections · **Deps:** 2.13 · **Order:** foundational — do early in Phase 2/3 boundary, before memory/pagination.
 
@@ -354,11 +377,65 @@ Each gated on the relevant Phase 3 foundation.
 
 ## Progress Tracker (resume here)
 
-- [ ] Phase 1 — Production Hardening (1.1–1.12)
-- [ ] Phase 2 — Scalable Backend (2.1–2.17)
-- [ ] Phase 3 — AI Architecture (3.1–3.8)
-- [ ] Phase 4 — Future Features (4.1–4.11)
+- [x] Phase 1 — Production Hardening (1.1–1.12) ✅ Done 2026-07-22
+- [x] Phase 2 — Scalable Backend (2.1–2.17) ✅ Done 2026-07-22 (2.4/2.5/2.6/2.7 deferred — need Redis)
+- [x] Phase 3 — AI Architecture (3.1–3.8) ✅ Done 2026-07-23 (3.2 memory system deferred — needs MongoDB Atlas Vector Search setup; 3.5 tool calling deferred to Phase 4)
+- [x] Phase 4 — Future Features (4.2, 4.3, 4.4, 4.6, 4.7, 4.9) ✅ Done 2026-07-23 (4.1 memory system deferred; 4.5 voice deferred; 4.8 citations deferred; 4.10 planning deferred; 4.11 multi-agent deferred)
+- [x] IMPROVEMENTS — #15 Shareable links, #17 PWA ✅ Done 2026-07-23
 
-**Next action when resuming:** begin Tier 0 (1.5 env validation + 1.6 JWT secret), then confirm the three "big decisions" above with the user before starting Tier 1 (provider layer + storage redesign).
+**Next action when resuming:** #7 split chat.js, #8 split styles.css, or #12 Cloudinary graceful fallback.
 
-*No implementation has begun. Awaiting go-ahead.*
+**IMPROVEMENTS completed (2026-07-23):**
+- #10 Accessibility — skip-to-content, focus-visible, prefers-reduced-motion, ARIA labels
+- #13 Light theme + toggle — persisted in localStorage
+- #14 Chat search + date grouping — backend endpoint + client search bar + Today/Yesterday/Earlier
+
+**Phase 1 completed items:**
+- 1.1 Server-side media validation (`src/utils/mediaValidation.js`)
+- 1.2 Consistent body size limits (`MAX_BODY_SIZE` env, 4mb default)
+- 1.3 Rate-limit coverage (auth + chats limiters added)
+- 1.4 Shared rate-limit store (`rate-limit-mongo`, falls back to in-memory)
+- 1.5 Environment validation (`src/config/env.js`, fail-fast in prod)
+- 1.6 JWT security (removed insecure fallback, shortened to 7d, min 16 chars)
+- 1.7 Helmet + security headers (HSTS, noSniff, frameguard, etc.)
+- 1.8 CSP headers (production-only, tuned for Google Auth + Cloudinary)
+- 1.9 XSS protection (DOMPurify on client-side markdown rendering)
+- 1.10 Mongo injection protection (`express-mongo-sanitize` + ObjectId validation)
+- 1.11 Dead-code cleanup (removed `huggingFaceService`, `sessionService`, `buildChatMessages`, `buildConversationInput`, `generateVisionReply`, `express-session` dep)
+- 1.12 Request IDs (`crypto.randomUUID()`) + improved error handler (hides internals in prod)
+
+**Phase 2 completed items:**
+- 2.1 Provider abstraction layer (`src/providers/base.js`, `opencode.js`, `registry.js`)
+- 2.2 Cross-provider fallback (registry `selectAll()` with capability filters)
+- 2.3 SSE streaming standardization (`event:/data:` format, client parser updated)
+- 2.8-2.11 Health endpoints (`/healthz`, `/readyz` checking DB + providers) + request ID propagation via `X-Request-Id` header
+- 2.12 Token accounting (`usage` object with tokensIn/tokensOut/model emitted on `done` event)
+- 2.13 Database indexing (compound indexes on userId+updatedAt, sparse unique clientId)
+- 2.14 Chat schema enhancements (token fields, deletedAt, messageCount)
+- 2.15 Cursor-based pagination (`?cursor=<ISO date>&limit=<n>`, returns nextCursor)
+- 2.16 Soft deletes (`chat.softDelete()`, `chat.restore()`, pre-hook auto-filtering)
+- 2.17 TTL index on `deletedAt` (auto-delete soft-deleted chats after 30 days)
+
+**Phase 3 completed items:**
+- 3.1 Context management (`src/context/contextManager.js` — fetches messages, checks summarization threshold, builds context)
+- 3.3 Prompt builder (`src/prompt/promptBuilder.js` — layered pipeline with token budgeting: system/recent/summary/memory layers)
+- 3.4 Multi-provider AI layer (OpenAI `openai.js`, Anthropic `anthropic.js`, Gemini `gemini.js` providers + auto-registration)
+- 3.7 Model routing (`src/router/modelRouter.js` — cost-tier heuristic routing, capability matching)
+- 3.8 Conversation storage redesign (Message collection split from Chat, migration script, dual-collection CRUD)
+
+**Phase 4 completed items:**
+- 4.2 Web search (Brave Search API — service, controller, route, client UI with toggle)
+- 4.3 Vision standardization (`src/utils/mediaNormalizer.js` — OpenAI/Anthropic/Gemini format adapters)
+- 4.4 Real image generation (DALL-E 3 via OpenAI, falls back to SVG generation. `src/services/imageGenService.js`)
+- 4.6 Canvas/Artifacts (split-panel sandbox: code editor + live iframe preview. "Canvas" button on HTML/CSS/JS code blocks)
+- 4.7 Agent mode (tool calling framework: 5 tools — web_search, read_file, write_file, list_files, run_code. `src/agent/tools.js`, `src/agent/agentLoop.js`)
+- 4.9 Reasoning mode (`src/utils/reasoningDetector.js` — pattern-based complexity detection, routes to reasoning models)
+
+**Deferred (require Redis or external service):**
+- 2.4/2.5 Queue + background workers — gated on Vercel serverless limits; needs separate worker service
+- 2.6 Caching — depends on 3.2 memory system + Redis; use Upstash Redis when ready
+- 2.7 Cost optimization — depends on 3.7 model routing layer (routing done, cost tracking needs Redis)
+
+**Deferred (require additional setup):**
+- 3.2 Memory system — needs MongoDB Atlas Vector Search enabled on the cluster
+- 3.5 Tool calling framework — design done, implement incrementally in Phase 4

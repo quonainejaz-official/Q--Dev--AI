@@ -7,9 +7,62 @@ jest.mock("../src/services/cloudinaryService", () => ({
   isCloudinaryConfigured: jest.fn().mockReturnValue(false),
 }));
 
+// Message store for mock.
+const messageStore = {};
+
+jest.mock("../src/models/Message", () => {
+  const mongoose = require("mongoose");
+  const Message = {
+    _reset() {
+      Object.keys(messageStore).forEach((k) => delete messageStore[k]);
+    },
+    async insertMany(docs) {
+      const inserted = [];
+      for (const d of docs) {
+        const _id = new mongoose.Types.ObjectId().toString();
+        const doc = { _id, ...d };
+        messageStore[_id] = doc;
+        inserted.push(doc);
+      }
+      return inserted;
+    },
+    find(query) {
+      let docs = Object.values(messageStore);
+      if (query.chatId) docs = docs.filter((d) => String(d.chatId) === String(query.chatId));
+      if (query.userId) docs = docs.filter((d) => String(d.userId) === String(query.userId));
+      const chain = {
+        _docs: docs,
+        sort() {
+          chain._docs = [...chain._docs].sort((a, b) => a.timestamp - b.timestamp);
+          return chain;
+        },
+        then(resolve) {
+          resolve(chain._docs);
+        },
+      };
+      return chain;
+    },
+    async deleteMany(query) {
+      const keys = Object.keys(messageStore);
+      for (const k of keys) {
+        const d = messageStore[k];
+        if (query.chatId && String(d.chatId) !== String(query.chatId)) continue;
+        if (query.userId && String(d.userId) !== String(query.userId)) continue;
+        delete messageStore[k];
+      }
+    },
+    async countDocuments(query) {
+      let docs = Object.values(messageStore);
+      if (query.chatId) docs = docs.filter((d) => String(d.chatId) === String(query.chatId));
+      return docs.length;
+    },
+  };
+  return Message;
+});
+
 jest.mock("../src/models/Chat", () => {
+  const mongoose = require("mongoose");
   const store = {};
-  let idCounter = 1;
 
   const toClientJSON = function () {
     return {
@@ -17,21 +70,32 @@ jest.mock("../src/models/Chat", () => {
       _id: this._id,
       title: this.title,
       titleIsCustom: this.titleIsCustom,
-      messages: this.messages,
+      messageCount: this.messageCount,
       updatedAt: this.updatedAt,
     };
   };
 
   const mockDoc = (data) => {
     const doc = {
-      _id: data._id || `chat-${idCounter++}`,
+      _id: data._id || new mongoose.Types.ObjectId().toString(),
       userId: data.userId,
       clientId: data.clientId || null,
       title: data.title || "New Chat",
       titleIsCustom: data.titleIsCustom || false,
-      messages: data.messages || [],
+      messageCount: data.messageCount || 0,
+      deletedAt: data.deletedAt || null,
       updatedAt: Date.now(),
       save() {
+        store[doc._id] = doc;
+        return Promise.resolve(doc);
+      },
+      softDelete() {
+        doc.deletedAt = new Date();
+        store[doc._id] = doc;
+        return Promise.resolve(doc);
+      },
+      restore() {
+        doc.deletedAt = null;
         store[doc._id] = doc;
         return Promise.resolve(doc);
       },
@@ -40,19 +104,24 @@ jest.mock("../src/models/Chat", () => {
     return doc;
   };
 
+  const isActive = (d) => !d.deletedAt;
+
   const Chat = {
     _reset() {
       Object.keys(store).forEach((k) => delete store[k]);
-      idCounter = 1;
     },
     async create(data) {
       const doc = mockDoc(data);
       store[doc._id] = doc;
       return doc;
     },
-    find(query) {
-      let docs = Object.values(store);
+    find(query, _projection, options) {
+      let docs = Object.values(store).filter(isActive);
       if (query.userId) docs = docs.filter((d) => String(d.userId) === String(query.userId));
+      if (query.clientId) docs = docs.filter((d) => d.clientId === query.clientId);
+      if (query.updatedAt && query.updatedAt.$lt) {
+        docs = docs.filter((d) => d.updatedAt < query.updatedAt.$lt);
+      }
       const chain = {
         _docs: docs,
         sort() {
@@ -65,8 +134,8 @@ jest.mock("../src/models/Chat", () => {
       };
       return chain;
     },
-    async findOne(query) {
-      const docs = Object.values(store);
+    async findOne(query, _projection, options) {
+      const docs = Object.values(store).filter(isActive);
       return docs.find((d) => {
         if (query._id && d._id !== query._id) return false;
         if (query.userId && String(d.userId) !== String(query.userId)) return false;
@@ -76,13 +145,13 @@ jest.mock("../src/models/Chat", () => {
     },
     async deleteOne(query) {
       const docs = Object.values(store);
-      const idx = docs.findIndex((d) => {
+      const doc = docs.find((d) => {
         if (query._id && d._id !== query._id) return false;
         if (query.userId && String(d.userId) !== String(query.userId)) return false;
         return true;
       });
-      if (idx >= 0) {
-        delete store[docs[idx]._id];
+      if (doc) {
+        doc.deletedAt = new Date();
         return { deletedCount: 1 };
       }
       return { deletedCount: 0 };
@@ -96,18 +165,22 @@ jest.mock("../src/models/Chat", () => {
 
 const mongoose = require("mongoose");
 const Chat = require("../src/models/Chat");
+const Message = require("../src/models/Message");
 const { listChats, getChat, createChat, updateChat, deleteChat, migrateChats } = require("../src/controllers/chatsController");
 const { mockReq, mockRes, mockNext } = require("./setup");
 
 const userId = "user-123";
+const NON_EXISTENT_ID = new mongoose.Types.ObjectId().toString();
 let chatId;
 
 beforeAll(() => {
   Chat._reset();
+  Message._reset();
 });
 
 afterAll(() => {
   Chat._reset();
+  Message._reset();
 });
 
 describe("createChat", () => {
@@ -120,8 +193,7 @@ describe("createChat", () => {
     await createChat(req, res, mockNext());
 
     expect(res._json.chat.title).toBe("My Chat");
-    expect(res._json.chat.messages).toHaveLength(1);
-    expect(res._json.chat.messages[0].content).toBe("Hello");
+    expect(res._json.chat.messageCount).toBe(1);
     chatId = res._json.chat._id;
   });
 
@@ -145,7 +217,7 @@ describe("createChat", () => {
     await createChat(req2, res2, mockNext());
 
     expect(res2._json.chat.title).toBe("Updated Title");
-    expect(res2._json.chat.messages).toHaveLength(1);
+    expect(res2._json.chat.messageCount).toBe(1);
   });
 
   test("defaults title to New Chat when not provided", async () => {
@@ -172,8 +244,18 @@ describe("createChat", () => {
     const res = mockRes();
     await createChat(req, res, mockNext());
 
-    expect(res._json.chat.messages).toHaveLength(2);
-    expect(res._json.chat.messages[0].images).toContain("https://example.com/img.jpg");
+    expect(res._json.chat.messageCount).toBe(2);
+  });
+
+  test("returns messageCount in response", async () => {
+    const req = mockReq({
+      userId,
+      body: { messages: [{ role: "user", content: "a" }, { role: "bot", content: "b" }] },
+    });
+    const res = mockRes();
+    await createChat(req, res, mockNext());
+
+    expect(res._json.chat.messageCount).toBe(2);
   });
 });
 
@@ -185,6 +267,7 @@ describe("listChats", () => {
 
     expect(res._json.chats).toBeInstanceOf(Array);
     expect(res._json.chats.length).toBeGreaterThanOrEqual(1);
+    expect(res._json).toHaveProperty("nextCursor");
   });
 
   test("returns correct chat fields", async () => {
@@ -196,23 +279,32 @@ describe("listChats", () => {
     expect(chat).toHaveProperty("_id");
     expect(chat).toHaveProperty("title");
     expect(chat).toHaveProperty("titleIsCustom");
-    expect(chat).toHaveProperty("messages");
+    expect(chat).toHaveProperty("messageCount");
     expect(chat).toHaveProperty("updatedAt");
+  });
+
+  test("rejects invalid cursor", async () => {
+    const req = mockReq({ userId, query: { cursor: "not-a-date" } });
+    const res = mockRes();
+    await listChats(req, res, mockNext());
+
+    expect(res.statusCode).toBe(400);
   });
 });
 
 describe("getChat", () => {
-  test("returns a single chat by id", async () => {
+  test("returns a single chat by id with messages", async () => {
     const req = mockReq({ userId, params: { id: chatId } });
     const res = mockRes();
     await getChat(req, res, mockNext());
 
     expect(res._json.chat._id).toBe(chatId);
     expect(res._json.chat.title).toBe("My Chat");
+    expect(Array.isArray(res._json.chat.messages)).toBe(true);
   });
 
   test("returns 404 for non-existent chat", async () => {
-    const req = mockReq({ userId, params: { id: "chat-nonexistent" } });
+    const req = mockReq({ userId, params: { id: NON_EXISTENT_ID } });
     const res = mockRes();
     await getChat(req, res, mockNext());
 
@@ -244,12 +336,11 @@ describe("updateChat", () => {
     const res = mockRes();
     await updateChat(req, res, mockNext());
 
-    expect(res._json.chat.messages).toHaveLength(1);
-    expect(res._json.chat.messages[0].content).toBe("Updated msg");
+    expect(res._json.chat.messageCount).toBe(1);
   });
 
   test("returns 404 for non-existent chat", async () => {
-    const req = mockReq({ userId, params: { id: "chat-nonexistent" }, body: { title: "x" } });
+    const req = mockReq({ userId, params: { id: NON_EXISTENT_ID }, body: { title: "x" } });
     const res = mockRes();
     await updateChat(req, res, mockNext());
 
@@ -258,11 +349,11 @@ describe("updateChat", () => {
 });
 
 describe("deleteChat", () => {
-  test("deletes a chat", async () => {
+  test("soft-deletes a chat", async () => {
     const created = await Chat.create({
       userId,
       title: "Delete Me",
-      messages: [{ role: "user", content: "bye" }],
+      messageCount: 1,
     });
 
     const req = mockReq({ userId, params: { id: created._id } });
@@ -270,10 +361,17 @@ describe("deleteChat", () => {
     await deleteChat(req, res, mockNext());
 
     expect(res._json.status).toBe("success");
+
+    // Chat should no longer appear in listChats (filtered by soft-delete).
+    const listReq = mockReq({ userId });
+    const listRes = mockRes();
+    await listChats(listReq, listRes, mockNext());
+    const found = listRes._json.chats.find((c) => c._id === created._id);
+    expect(found).toBeUndefined();
   });
 
   test("returns 404 for non-existent chat", async () => {
-    const req = mockReq({ userId, params: { id: "chat-nonexistent" } });
+    const req = mockReq({ userId, params: { id: NON_EXISTENT_ID } });
     const res = mockRes();
     await deleteChat(req, res, mockNext());
 

@@ -54,51 +54,11 @@ const validateMessage = (message) => {
 
 const sanitizeMessage = (message) => validator.escape(message);
 
-const buildChatMessages = (history, text) => {
-  const messages = [
-    {
-      role: "system",
-      content:
-        "You are Q-Dev-AI, a coding assistant created by Quonain Ejaz. When asked about your identity, always say you are Q-Dev-AI, your coding assistant made by Quonain Ejaz. Never mention Alibaba or any other creator."
-    }
-  ];
-  history.forEach((item) => {
-    messages.push({
-      role: item.role === "bot" ? "assistant" : "user",
-      content: item.content
-    });
-  });
-  messages.push({ role: "user", content: text });
-  return messages;
-};
-
-const buildConversationInput = (history, text) => {
-  const pastUserInputs = [];
-  const generatedResponses = [];
-
-  history.forEach((item) => {
-    if (item.role === "user") {
-      pastUserInputs.push(item.content);
-    }
-    if (item.role === "bot") {
-      generatedResponses.push(item.content);
-    }
-  });
-
-  return {
-    past_user_inputs: pastUserInputs,
-    generated_responses: generatedResponses,
-    text
-  };
-};
-
 module.exports = {
   MAX_MESSAGE_LENGTH,
   MAX_MESSAGE_LINES,
   MAX_MESSAGE_WORDS,
   MAX_HISTORY_LENGTH,
   validateMessage,
-  sanitizeMessage,
-  buildChatMessages,
-  buildConversationInput
+  sanitizeMessage
 };

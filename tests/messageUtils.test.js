@@ -11,19 +11,6 @@ describe("message utils", () => {
     expect(sanitized).toBe("&lt;script&gt;alert(1)&lt;&#x2F;script&gt;");
   });
 
-  test("buildConversationInput maps history to inputs", () => {
-    const { buildConversationInput } = require("../src/utils/messageUtils");
-    const history = [
-      { role: "user", content: "Hi" },
-      { role: "bot", content: "Hello" },
-      { role: "user", content: "How are you?" }
-    ];
-    const input = buildConversationInput(history, "Next");
-    expect(input.past_user_inputs).toEqual(["Hi", "How are you?"]);
-    expect(input.generated_responses).toEqual(["Hello"]);
-    expect(input.text).toBe("Next");
-  });
-
   describe("validateMessage limits", () => {
     const originalMaxMessageLength = process.env.MAX_MESSAGE_LENGTH;
 

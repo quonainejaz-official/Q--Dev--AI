@@ -57,4 +57,39 @@ const uploadMany = async (sources, opts) => {
     .map((r) => r.value);
 };
 
-module.exports = { uploadOne, uploadMany, isCloudinaryConfigured };
+// Generates a signed upload URL so the client can upload directly to Cloudinary
+// without proxying through the server (saves bandwidth on serverless).
+const generateSignedUploadUrl = (opts = {}) => {
+  if (!configure()) {
+    throw new Error("Cloudinary is not configured.");
+  }
+  const {
+    folder = "q-dev-ai",
+    resourceType = "auto",
+    expiresIn = 300, // 5 minutes
+    maxFileSize = 10 * 1024 * 1024 // 10 MB default
+  } = opts;
+
+  const timestamp = Math.floor(Date.now() / 1000) + expiresIn;
+
+  const params = {
+    folder,
+    resource_type: resourceType,
+    timestamp,
+    type: "upload"
+  };
+
+  const signature = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
+
+  return {
+    url: `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
+    params: {
+      api_key: process.env.CLOUDINARY_API_KEY,
+      ...params,
+      signature
+    },
+    maxFileSize
+  };
+};
+
+module.exports = { uploadOne, uploadMany, isCloudinaryConfigured, generateSignedUploadUrl };

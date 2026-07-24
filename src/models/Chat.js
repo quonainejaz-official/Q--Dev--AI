@@ -1,35 +1,79 @@
 const mongoose = require("mongoose");
 
-const messageSchema = new mongoose.Schema(
-  {
-    role: { type: String, enum: ["user", "bot"], required: true },
-    content: { type: String, default: "" },
-    timestamp: { type: Number, default: () => Date.now() },
-    // Cloudinary URLs (not base64) once uploaded.
-    images: { type: [String], default: undefined },
-    audios: { type: [String], default: undefined },
-    videos: { type: [String], default: undefined },
-    pdfs: { type: [String], default: undefined }
-  },
-  { _id: false }
-);
-
 const chatSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      index: true
+      required: true
     },
-    // Client-generated id so guest chats can migrate without collisions.
-    clientId: { type: String, default: null, index: true },
+    clientId: { type: String, default: null },
     title: { type: String, default: "New Chat" },
     titleIsCustom: { type: Boolean, default: false },
-    messages: { type: [messageSchema], default: [] }
+    messageCount: { type: Number, default: 0 },
+    // Soft delete (2.16) — null means not deleted.
+    deletedAt: { type: Date, default: null },
+    // Shareable link (15) — null means not shared.
+    shareId: { type: String, default: null, sparse: true },
+    sharedAt: { type: Date, default: null }
   },
   { timestamps: true }
 );
+
+// --- Indexes (2.13) ---
+
+// Primary query: list chats for a user, sorted by most recent.
+chatSchema.index({ userId: 1, updatedAt: -1 });
+
+// Soft-delete filter: exclude deleted chats from all queries by default.
+chatSchema.index({ userId: 1, deletedAt: 1, updatedAt: -1 });
+
+// Guest chat migration lookup.
+chatSchema.index({ userId: 1, clientId: 1 }, { unique: true, sparse: true });
+
+// Shareable link lookup (15).
+chatSchema.index({ shareId: 1 }, { unique: true, sparse: true });
+
+// TTL: auto-delete soft-deleted chats after 30 days (2.17).
+chatSchema.index({ deletedAt: 1 }, { expireAfterSeconds: 2592000, partialFilterExpression: { deletedAt: { $type: "date" } } });
+
+// --- Soft-delete helpers (2.16) ---
+
+// Auto-filter deleted docs on find/findOne/findOneAndUpdate.
+const autoFilter = function (next) {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ deletedAt: null });
+  }
+  next();
+};
+
+chatSchema.pre("find", autoFilter);
+chatSchema.pre("findOne", autoFilter);
+chatSchema.pre("findOneAndUpdate", autoFilter);
+chatSchema.pre("countDocuments", autoFilter);
+chatSchema.pre("aggregate", function (next) {
+  // Add soft-delete filter to aggregation pipelines unless already present.
+  const hasDeletedAt = this.pipeline().some((stage) => {
+    const match = stage.$match;
+    return match && "deletedAt" in match;
+  });
+  if (!hasDeletedAt) {
+    this.pipeline().unshift({ $match: { deletedAt: null } });
+  }
+  next();
+});
+
+// --- Methods ---
+
+chatSchema.methods.softDelete = function softDelete() {
+  this.deletedAt = new Date();
+  return this.save();
+};
+
+chatSchema.methods.restore = function restore() {
+  this.deletedAt = null;
+  return this.save();
+};
 
 chatSchema.methods.toClientJSON = function toClientJSON() {
   return {
@@ -37,7 +81,8 @@ chatSchema.methods.toClientJSON = function toClientJSON() {
     _id: this._id.toString(),
     title: this.title,
     titleIsCustom: this.titleIsCustom,
-    messages: this.messages,
+    messageCount: this.messageCount,
+    shareId: this.shareId || null,
     updatedAt: this.updatedAt
   };
 };

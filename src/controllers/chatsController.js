@@ -1,14 +1,15 @@
+const mongoose = require("mongoose");
 const { connectDB } = require("../services/db");
 const Chat = require("../models/Chat");
+const Message = require("../models/Message");
 const {
   uploadMany,
   isCloudinaryConfigured
 } = require("../services/cloudinaryService");
 const { MAX_HISTORY_LENGTH } = require("../utils/messageUtils");
 
-// Upload any base64 media in a message to Cloudinary and replace with URLs.
-// When Cloudinary isn't configured, data-URL media is dropped (to avoid
-// bloating MongoDB); already-hosted URLs are kept.
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
 const processMedia = async (message) => {
   const out = {
     role: message?.role === "bot" ? "bot" : "user",
@@ -31,7 +32,6 @@ const processMedia = async (message) => {
     if (isCloudinaryConfigured()) {
       out[key] = await uploadMany(arr, { resourceType });
     } else {
-      // Keep only already-hosted URLs.
       out[key] = arr.filter((s) => typeof s === "string" && /^https?:\/\//i.test(s));
     }
     if (!out[key].length) delete out[key];
@@ -46,13 +46,34 @@ const processMessages = async (messages) => {
   return Promise.all(sliced.map(processMedia));
 };
 
+// Cursor-based pagination (2.15). Pass ?cursor=<updatedAt ISO>&limit=<n>.
 const listChats = async (req, res, next) => {
   try {
     await connectDB();
-    const chats = await Chat.find({ userId: req.userId })
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const cursor = req.query.cursor;
+
+    const query = { userId: req.userId };
+    if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (isNaN(cursorDate.getTime())) {
+        return res.status(400).json({ error: "Invalid cursor." });
+      }
+      query.updatedAt = { $lt: cursorDate };
+    }
+
+    const chats = await Chat.find(query)
       .sort({ updatedAt: -1 })
-      .limit(200);
-    res.json({ chats: chats.map((c) => c.toClientJSON()) });
+      .limit(limit + 1); // fetch one extra to detect "has more"
+
+    const hasMore = chats.length > limit;
+    const items = hasMore ? chats.slice(0, limit) : chats;
+    const nextCursor = hasMore ? items[items.length - 1].updatedAt.toISOString() : null;
+
+    res.json({
+      chats: items.map((c) => c.toClientJSON()),
+      nextCursor
+    });
   } catch (error) {
     next(error);
   }
@@ -60,21 +81,46 @@ const listChats = async (req, res, next) => {
 
 const getChat = async (req, res, next) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid chat ID." });
+    }
     await connectDB();
     const chat = await Chat.findOne({ _id: req.params.id, userId: req.userId });
     if (!chat) return res.status(404).json({ error: "Chat not found." });
-    res.json({ chat: chat.toClientJSON() });
+
+    // Fetch messages from the Message collection.
+    const messages = await Message.find({ chatId: chat._id, userId: req.userId })
+      .sort({ timestamp: 1 });
+
+    res.json({
+      chat: {
+        ...chat.toClientJSON(),
+        messages: messages.map((m) => ({
+          _id: m._id.toString(),
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+          images: m.images,
+          audios: m.audios,
+          videos: m.videos,
+          pdfs: m.pdfs,
+          model: m.model,
+          tokensIn: m.tokensIn,
+          tokensOut: m.tokensOut,
+          finishReason: m.finishReason
+        }))
+      }
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// Create or upsert by clientId (used for guest-chat migration + normal saves).
 const createChat = async (req, res, next) => {
   try {
     await connectDB();
     const body = req.body || {};
-    const messages = await processMessages(body.messages);
+    const processedMsgs = await processMessages(body.messages);
 
     let chat = null;
     if (body.clientId) {
@@ -84,16 +130,31 @@ const createChat = async (req, res, next) => {
     if (chat) {
       chat.title = body.title || chat.title;
       chat.titleIsCustom = Boolean(body.titleIsCustom);
-      chat.messages = messages;
       await chat.save();
+
+      // Replace messages: delete old, insert new.
+      if (Array.isArray(body.messages)) {
+        await Message.deleteMany({ chatId: chat._id, userId: req.userId });
+        if (processedMsgs.length) {
+          const docs = processedMsgs.map((m) => ({ ...m, chatId: chat._id, userId: req.userId }));
+          await Message.insertMany(docs);
+        }
+        chat.messageCount = processedMsgs.length;
+        await chat.save();
+      }
     } else {
       chat = await Chat.create({
         userId: req.userId,
         clientId: body.clientId || null,
         title: body.title || "New Chat",
         titleIsCustom: Boolean(body.titleIsCustom),
-        messages
+        messageCount: processedMsgs.length
       });
+
+      if (processedMsgs.length) {
+        const docs = processedMsgs.map((m) => ({ ...m, chatId: chat._id, userId: req.userId }));
+        await Message.insertMany(docs);
+      }
     }
 
     res.json({ chat: chat.toClientJSON() });
@@ -104,6 +165,9 @@ const createChat = async (req, res, next) => {
 
 const updateChat = async (req, res, next) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid chat ID." });
+    }
     await connectDB();
     const chat = await Chat.findOne({ _id: req.params.id, userId: req.userId });
     if (!chat) return res.status(404).json({ error: "Chat not found." });
@@ -112,8 +176,16 @@ const updateChat = async (req, res, next) => {
     if (typeof body.title === "string") chat.title = body.title;
     if (typeof body.titleIsCustom === "boolean")
       chat.titleIsCustom = body.titleIsCustom;
-    if (Array.isArray(body.messages))
-      chat.messages = await processMessages(body.messages);
+
+    if (Array.isArray(body.messages)) {
+      const processedMsgs = await processMessages(body.messages);
+      await Message.deleteMany({ chatId: chat._id, userId: req.userId });
+      if (processedMsgs.length) {
+        const docs = processedMsgs.map((m) => ({ ...m, chatId: chat._id, userId: req.userId }));
+        await Message.insertMany(docs);
+      }
+      chat.messageCount = processedMsgs.length;
+    }
 
     await chat.save();
     res.json({ chat: chat.toClientJSON() });
@@ -122,15 +194,18 @@ const updateChat = async (req, res, next) => {
   }
 };
 
+// Soft delete (2.16) instead of hard delete.
 const deleteChat = async (req, res, next) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid chat ID." });
+    }
     await connectDB();
-    const result = await Chat.deleteOne({
-      _id: req.params.id,
-      userId: req.userId
-    });
-    if (!result.deletedCount)
-      return res.status(404).json({ error: "Chat not found." });
+    const chat = await Chat.findOne({ _id: req.params.id, userId: req.userId });
+    if (!chat) return res.status(404).json({ error: "Chat not found." });
+
+    await chat.softDelete();
+    // Messages are left in place — TTL on Chat + orphan cleanup handles them.
     res.json({ status: "success" });
   } catch (error) {
     next(error);
@@ -138,6 +213,7 @@ const deleteChat = async (req, res, next) => {
 };
 
 // Bulk migration of guest chats on first login.
+// Uses includeDeleted option to bypass soft-delete filter.
 const migrateChats = async (req, res, next) => {
   try {
     await connectDB();
@@ -145,23 +221,41 @@ const migrateChats = async (req, res, next) => {
     const saved = [];
     for (const c of incoming) {
       if (!Array.isArray(c?.messages) || !c.messages.length) continue;
-      const messages = await processMessages(c.messages);
+      const processedMsgs = await processMessages(c.messages);
       let chat = c.clientId
-        ? await Chat.findOne({ userId: req.userId, clientId: c.clientId })
+        ? await Chat.findOne(
+            { userId: req.userId, clientId: c.clientId },
+            null,
+            { includeDeleted: true }
+          )
         : null;
+
       if (chat) {
         chat.title = c.title || chat.title;
         chat.titleIsCustom = Boolean(c.titleIsCustom);
-        chat.messages = messages;
+        chat.deletedAt = null; // restore if previously soft-deleted
+        chat.messageCount = processedMsgs.length;
         await chat.save();
+
+        // Replace messages.
+        await Message.deleteMany({ chatId: chat._id, userId: req.userId });
+        if (processedMsgs.length) {
+          const docs = processedMsgs.map((m) => ({ ...m, chatId: chat._id, userId: req.userId }));
+          await Message.insertMany(docs);
+        }
       } else {
         chat = await Chat.create({
           userId: req.userId,
           clientId: c.clientId || c.id || null,
           title: c.title || "New Chat",
           titleIsCustom: Boolean(c.titleIsCustom),
-          messages
+          messageCount: processedMsgs.length
         });
+
+        if (processedMsgs.length) {
+          const docs = processedMsgs.map((m) => ({ ...m, chatId: chat._id, userId: req.userId }));
+          await Message.insertMany(docs);
+        }
       }
       saved.push(chat.toClientJSON());
     }

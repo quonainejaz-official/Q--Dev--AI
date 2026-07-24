@@ -1,6 +1,6 @@
 # Implementation Plan — Q-Dev-AI
 
-**Last updated:** 2026-07-22 · Legend: ✅ done · 🟡 partial · ⬜ not started
+**Last updated:** 2026-07-23 · Legend: ✅ done · 🟡 partial · ⬜ not started
 
 ---
 
@@ -40,15 +40,42 @@
 
 ---
 
-## Phase 6 — Hardening & Cleanup (🟡 In progress / next)
+## Phase 6 — Hardening & Cleanup (✅ Done)
 - ✅ True token streaming — SSE/chunked streaming from OpenCode Zen (`opencodeService.js`, `chatController.js`)
-- ✅ Test coverage — 62 tests across auth, chats CRUD/migration, chat controller, image gen, messageUtils (`tests/`)
-- ⬜ Remove/retire unused `huggingFaceService.js`; rename package from `hf-chatbot`
+- ✅ Test coverage — 96 tests across auth, chats CRUD/migration, chat controller, image gen, messageUtils, providers, prompt builder, model router (`tests/`)
+- ✅ Remove/retire unused `huggingFaceService.js` + `sessionService.js` + dead exports; `express-session` dep removed
+- ✅ Error observability — request IDs, structured error handler, `X-Request-Id` header, health endpoints
+- ✅ Server-side media validation + body size limits (`mediaValidation.js`, `MAX_BODY_SIZE` env)
+- ✅ Rate-limit coverage — auth + chats limiters, backed by `rate-limit-mongo`
+- ✅ Env validation at boot (`src/config/env.js`), JWT secret hardened
+- ✅ Security headers — Helmet + CSP (production), `express-mongo-sanitize`, ObjectId validation
+- ✅ XSS protection — DOMPurify on client-side markdown rendering
 - ⬜ Update README (references outdated `/api/stream` SSE API)
-- ⬜ Centralize/config-check secrets; document all env vars (see [SETUP.md](SETUP.md))
-- ⬜ Error observability / logging beyond `morgan`
 
-## Phase 7 — Feature Backlog (⬜ Planned)
+## Phase 7 — Scalable Backend (✅ Done)
+- ✅ Provider abstraction layer (`src/providers/base.js`, `opencode.js`, `registry.js`)
+- ✅ Cross-provider fallback (registry `selectAll()` with capability filters)
+- ✅ SSE streaming standardization (`event:/data:` format, client parser updated)
+- ✅ Health endpoints (`/healthz`, `/readyz` checking DB + providers)
+- ✅ Token accounting (`usage` with tokensIn/tokensOut/model on `done` event)
+- ✅ Database indexing (compound indexes, sparse unique clientId)
+- ✅ Chat schema enhancements (token fields, deletedAt, messageCount)
+- ✅ Cursor-based pagination (`?cursor=<ISO date>&limit=<n>`)
+- ✅ Soft deletes + TTL auto-cleanup (30 days)
+- ⬜ Queue/background workers (deferred — needs Redis + separate service)
+- ⬜ Caching strategy (deferred — needs Redis)
+
+## Phase 8 — AI Architecture (✅ Done)
+- ✅ Multi-provider AI layer (OpenAI, Anthropic, Gemini + OpenCode)
+- ✅ Context management (`src/context/contextManager.js`)
+- ✅ Prompt builder (layered pipeline with token budgeting)
+- ✅ Model routing (cost-tier heuristic routing)
+- ✅ Conversation storage redesign (Message collection split from Chat)
+- ⬜ Memory system (deferred — needs MongoDB Atlas Vector Search)
+- ⬜ Tool calling framework (design done, implement in Phase 4)
+- ⬜ Signed direct uploads (deferred)
+
+## Phase 8 — Feature Backlog (⬜ Planned)
 See [MISSING_FEATURES.md](MISSING_FEATURES.md) and [IMPROVEMENTS.md](IMPROVEMENTS.md):
 - ⬜ Light theme / theme toggle
 - ⬜ Chat search
