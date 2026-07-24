@@ -116,6 +116,15 @@ const postMessage = async (req, res, next) => {
 
     // Select providers for fallback (2.2) based on capabilities needed.
     const providers = registry.selectAll({ vision: hasMedia, streaming: true });
+
+    // If no AI providers are configured, return a clear SSE error so the
+    // frontend can display a helpful message instead of silently finishing.
+    if (!providers || providers.length === 0) {
+      sendEvent("typing", { active: false });
+      sendEvent("error", { message: "No AI providers configured on the server. Please set an API key." });
+      res.end();
+      return;
+    }
     let lastError = null;
     let usage = null;
 
