@@ -149,6 +149,9 @@ export const renderHistoryList = () => {
     const title = document.createElement("span");
     title.className = "history-title";
     title.textContent = chat.title || "New Chat";
+    const historyIcon = document.createElement("span");
+    historyIcon.className = "history-icon";
+    historyIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>';
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "history-action-btn edit-history-btn";
@@ -194,7 +197,7 @@ export const renderHistoryList = () => {
         renderHistoryList();
       });
     });
-    titleContainer.append(title, editBtn);
+    titleContainer.append(historyIcon, title, editBtn);
     item.addEventListener("click", () => {
       window.dispatchEvent(new CustomEvent("qai:loadChat", { detail: { id: chat.id } }));
     });

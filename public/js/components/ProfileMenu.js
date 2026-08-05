@@ -14,18 +14,20 @@ TEMPLATE.innerHTML = `
   :host { display: block; position: relative; width: 100%; }
 
   .trigger {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px;
-    border-radius: 12px; cursor: pointer; transition: background 0.15s;
-    background: var(--hover-bg, rgba(255,255,255,0.05));
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px;
+    border-radius: 14px; cursor: pointer; transition: all 0.18s ease;
+    background: color-mix(in srgb, var(--surface-elevated, #272727) 84%, transparent);
     border: 1px solid var(--border-color, rgba(255,255,255,0.08)); width: 100%; box-sizing: border-box;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent), 0 8px 24px rgba(0,0,0,.1);
   }
-  .trigger:hover { background: var(--hover-bg, rgba(255,255,255,0.1)); }
+  .trigger:hover { background: var(--hover-bg, rgba(255,255,255,0.1)); transform: translateY(-1px); }
+  .trigger:focus-visible { outline: 2px solid var(--accent-color, #4c82fb); outline-offset: 2px; }
 
   .user-badge-group { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
 
   .avatar {
-    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+    width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent-color, #4c82fb), #7357e8);
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase;
   }
@@ -40,9 +42,9 @@ TEMPLATE.innerHTML = `
   }
 
   .upgrade-pill {
-    padding: 4px 10px; border-radius: 14px; background: rgba(255,255,255,0.1);
+    padding: 4px 9px; border-radius: 9px; background: color-mix(in srgb, var(--accent-color, #4c82fb) 11%, transparent);
     color: var(--text-primary, #fff); font-size: 11px; font-weight: 600;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.15));
+    border: 1px solid color-mix(in srgb, var(--accent-color, #4c82fb) 22%, var(--border-color, #333));
     transition: background 0.15s; flex-shrink: 0;
   }
   .upgrade-pill:hover { background: rgba(255,255,255,0.2); }
