@@ -21,11 +21,17 @@ const configureForDB = (db) => {
   }
 };
 
-const createLimiter = ({ windowMs = 60 * 1000, limit = 30, message } = {}) =>
+const createLimiter = ({
+  windowMs = 60 * 1000,
+  limit = 30,
+  message,
+  skipSuccessfulRequests = false
+} = {}) =>
   rateLimit({
     windowMs,
     limit,
     store,
+    skipSuccessfulRequests,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     message: message || { error: "Too many requests. Please slow down." }
@@ -34,10 +40,13 @@ const createLimiter = ({ windowMs = 60 * 1000, limit = 30, message } = {}) =>
 // General API limiter (existing behavior).
 const apiLimiter = createLimiter({ limit: 30 });
 
-// Stricter limiter for auth endpoints (brute-force protection).
+// Stricter limiter for credential endpoints (brute-force protection).
+// Successful sign-ins don't count — the budget is for *failed* attempts, so a
+// legitimate user is never locked out by their own working logins.
 const authLimiter = createLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 20,
+  skipSuccessfulRequests: true,
   message: { error: "Too many authentication attempts. Please try again later." }
 });
 

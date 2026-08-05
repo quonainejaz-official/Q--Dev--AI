@@ -15,4 +15,8 @@ router.put("/history", setHistory);
 router.post("/message", postMessage);
 router.post("/generate-image", postGenerateImage);
 
+// Public guest share endpoint (no auth)
+const { shareGuest } = require("../controllers/shareController");
+router.post("/public/share", shareGuest);
+
 module.exports = router;

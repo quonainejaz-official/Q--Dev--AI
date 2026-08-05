@@ -2,6 +2,7 @@ const { OpenCodeProvider } = require("./opencode");
 const { OpenAIProvider } = require("./openai");
 const { AnthropicProvider } = require("./anthropic");
 const { GeminiProvider } = require("./gemini");
+const { HuggingFaceProvider } = require("./huggingface");
 
 /**
  * Provider registry — manages configured providers, selects the best one,
@@ -71,6 +72,9 @@ const initProviders = () => {
   if (process.env.OPENCODE_API_KEY) {
     registry.register(new OpenCodeProvider());
   }
+  if (process.env.HF_API_KEY || process.env.HF_TOKEN) {
+    registry.register(new HuggingFaceProvider());
+  }
   if (process.env.OPENAI_API_KEY) {
     registry.register(new OpenAIProvider());
   }
@@ -82,7 +86,7 @@ const initProviders = () => {
   }
 
   if (registry.list().length === 0) {
-    console.warn("[providers] No AI providers configured. Set at least one: OPENCODE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY.");
+    console.warn("[providers] No AI providers configured. Set at least one: OPENCODE_API_KEY, HF_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY.");
   } else {
     const names = registry.list().map((p) => p.name);
     console.log(`[providers] Registered: ${names.join(", ")}`);

@@ -83,18 +83,18 @@ class OpenCodeProvider extends BaseProvider {
       }
     }
 
-    const content = [];
-    if (text) content.push({ type: "text", text });
+    const mediaContent = [];
+    if (text) mediaContent.push({ type: "text", text });
     if (Array.isArray(images)) {
       for (const url of images) {
-        content.push({ type: "image_url", image_url: { url } });
+        mediaContent.push({ type: "image_url", image_url: { url } });
       }
     }
     if (Array.isArray(audios)) {
       for (const dataUrl of audios) {
         const audioData = extractAudioData(dataUrl);
         if (audioData) {
-          content.push({
+          mediaContent.push({
             type: "input_audio",
             input_audio: { data: audioData.data, format: audioData.format }
           });
@@ -103,18 +103,19 @@ class OpenCodeProvider extends BaseProvider {
     }
     if (Array.isArray(videos)) {
       for (const dataUrl of videos) {
-        content.push({ type: "image_url", image_url: { url: dataUrl } });
+        mediaContent.push({ type: "image_url", image_url: { url: dataUrl } });
       }
     }
     if (Array.isArray(pdfs)) {
       for (const dataUrl of pdfs) {
         const pdfText = await extractPdfText(dataUrl);
         if (pdfText) {
-          content.push({ type: "text", text: `[Content extracted from attached PDF]:\n${pdfText}` });
+          mediaContent.push({ type: "text", text: `[Content extracted from attached PDF]:\n${pdfText}` });
         }
       }
     }
 
+    const content = hasAnyMedia({ images, audios, videos, pdfs }) ? mediaContent : (text || "");
     messages.push({ role: "user", content });
     return messages;
   }

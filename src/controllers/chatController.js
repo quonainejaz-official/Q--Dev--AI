@@ -33,6 +33,15 @@ const normalizeIncomingHistory = (history) => {
     .slice(-MAX_HISTORY_LENGTH);
 };
 
+const getProviderErrorMessage = (error) => {
+  if (process.env.NODE_ENV === "production") {
+    return "Unable to generate a response. Please try again.";
+  }
+
+  const detail = error?.message ? ` (${error.message})` : "";
+  return `Unable to generate a response. Please check your AI provider connection or API key${detail}.`;
+};
+
 const postGenerateImage = async (req, res, next) => {
   const prompt = req.body?.prompt;
   if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
@@ -141,11 +150,13 @@ const postMessage = async (req, res, next) => {
             sendEvent("chunk", { text: sanitizeMessage(event.text) });
           } else if (event.type === "done") {
             usage = event.usage;
+          } else if (event.type === "error") {
+            throw new Error(event.error || `${provider.name} stream error`);
           }
         }
 
         if (!started) {
-          throw new Error("No content received from provider.");
+          throw new Error(`Provider ${provider.name} returned no content.`);
         }
 
         lastError = null;
@@ -153,6 +164,7 @@ const postMessage = async (req, res, next) => {
       } catch (error) {
         lastError = error;
         console.error(`[chat] Provider ${provider.name} failed: ${error.message}`);
+        usage = null;
       }
     }
 
@@ -165,7 +177,7 @@ const postMessage = async (req, res, next) => {
     res.end();
   } catch (error) {
     sendEvent("typing", { active: false });
-    sendEvent("error", { message: "Unable to generate a response. Please try again." });
+    sendEvent("error", { message: getProviderErrorMessage(error) });
     res.end();
     next(error);
   }

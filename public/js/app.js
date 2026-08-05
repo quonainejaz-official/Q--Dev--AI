@@ -15,6 +15,7 @@ import { initCanvas } from "./canvas.js";
 import { initAuth } from "./auth.js";
 import { initSpeech } from "./speech.js";
 import { initPdf } from "./pdf.js";
+import { initSearchModal } from "./components/SearchModal.js";
 
 // --- Message limits ---
 const MESSAGE_LIMITS = { maxLines: 5000, maxChars: 50000, maxWords: 50000, maxTextareaHeightPx: 200 };
@@ -235,6 +236,7 @@ const boot = () => {
   initSpeech();
   initPdf();
   initAuth();
+  initSearchModal();
 
   // Wire up message input for limits
   const messageInput = $id("messageInput");

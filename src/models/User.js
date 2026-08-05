@@ -7,8 +7,7 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       lowercase: true,
-      trim: true,
-      index: true
+      trim: true
     },
     // Only present for email/password accounts.
     passwordHash: { type: String, default: null },

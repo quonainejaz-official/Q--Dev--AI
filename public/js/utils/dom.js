@@ -23,6 +23,7 @@ export function createElement(tag, attrs = {}, children = []) {
     } else {
       el.setAttribute(k, v);
     }
+  }
   for (const child of children) {
     if (typeof child === 'string') {
       el.appendChild(document.createTextNode(child));

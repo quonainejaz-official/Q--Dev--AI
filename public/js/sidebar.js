@@ -1,17 +1,14 @@
-import { $id, showToast, showModal } from "./utils.js";
+import { $id, showModal } from "./utils.js";
 import {
-  getChatHistory, getCurrentChat, setCurrentChatState, setCurrentChat,
-  ensureCurrentInHistory, storeCurrentInHistory, persistState,
+  getCurrentChat, setCurrentChatState, persistState,
   getChatHistory as getHistory, deleteHistory
 } from "./state.js";
-import { apiFetch } from "./api.js";
 
 const SIDEBAR_COLLAPSED_KEY = "qai-sidebar-collapsed";
 const THEME_KEY = "qai_theme";
 
 let appContainer, sidebarToggle, sidebarToggleMain, sidebarOverlay;
 let chatHistoryList, newChatButton, newChatButtonMain;
-let searchInput, searchResults;
 
 export const closeSidebarOnMobile = () => {
   if (window.innerWidth <= 768 && appContainer) {
@@ -45,76 +42,20 @@ const loadSidebarState = () => {
 };
 
 // --- Theme ---
-const applyTheme = (theme) => {
+export const applyTheme = (theme) => {
   document.documentElement.setAttribute("data-theme", theme);
-  const btn = $id("themeToggle");
-  if (btn) {
-    const sun = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-    const moon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-    btn.innerHTML = theme === "light" ? moon : sun;
-  }
-};
-
-const toggleTheme = () => {
-  const current = document.documentElement.getAttribute("data-theme");
-  const next = current === "light" ? "dark" : "light";
-  applyTheme(next);
-  localStorage.setItem(THEME_KEY, next);
 };
 
 const loadTheme = () => {
   const saved = localStorage.getItem(THEME_KEY);
-  if (saved) applyTheme(saved);
-  else applyTheme("dark");
-};
-
-// --- Search ---
-let searchDebounce = null;
-
-const handleSearch = (query) => {
-  if (!searchResults) return;
-  if (!query.trim()) {
-    searchResults.classList.add("hidden");
-    searchResults.innerHTML = "";
-    return;
+  if (saved === "system") {
+    const sys = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", sys);
+  } else if (saved) {
+    document.documentElement.setAttribute("data-theme", saved);
+  } else {
+    document.documentElement.setAttribute("data-theme", "dark");
   }
-  if (searchDebounce) clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(async () => {
-    try {
-      const res = await apiFetch(`/api/chats/search?q=${encodeURIComponent(query)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      renderSearchResults(data.results || []);
-    } catch { /* ignore */ }
-  }, 300);
-};
-
-const renderSearchResults = (results) => {
-  if (!searchResults) return;
-  if (!results.length) {
-    searchResults.innerHTML = '<div class="search-empty">No results found</div>';
-    searchResults.classList.remove("hidden");
-    return;
-  }
-  searchResults.innerHTML = "";
-  results.forEach(r => {
-    const item = document.createElement("div");
-    item.className = "search-result-item";
-    item.innerHTML = `
-      <span class="search-result-title">${r.title || "Untitled"}</span>
-      <span class="search-result-snippet">${r.snippet || ""}</span>
-    `;
-    item.addEventListener("click", () => {
-      const chat = getHistory().find(c => c.id === r.chatId || c.id === r.id);
-      if (chat) {
-        window.dispatchEvent(new CustomEvent("qai:loadChat", { detail: { id: chat.id } }));
-        searchResults.classList.add("hidden");
-        if (searchInput) searchInput.value = "";
-      }
-    });
-    searchResults.appendChild(item);
-  });
-  searchResults.classList.remove("hidden");
 };
 
 // --- Logo ---
@@ -149,12 +90,55 @@ const renderWordmark = (containerId, isLarge = false) => {
 };
 
 // --- History list ---
+
+const lastActivity = (chat) => {
+  const msgs = chat?.messages;
+  if (!Array.isArray(msgs) || !msgs.length) return 0;
+  const ts = msgs[msgs.length - 1]?.timestamp;
+  return typeof ts === "number" ? ts : 0;
+};
+
+// The sidebar used to print a hardcoded "Today" heading over every chat.
+// Bucket by real last-activity instead.
+const bucketFor = (ts) => {
+  if (!ts) return "Older";
+  const day = 24 * 60 * 60 * 1000;
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const start = midnight.getTime();
+  if (ts >= start) return "Today";
+  if (ts >= start - day) return "Yesterday";
+  if (ts >= start - 7 * day) return "Previous 7 days";
+  if (ts >= start - 30 * day) return "Previous 30 days";
+  return "Older";
+};
+
 export const renderHistoryList = () => {
   if (!chatHistoryList) return;
   const history = getHistory();
   const current = getCurrentChat();
   chatHistoryList.innerHTML = "";
-  history.forEach((chat) => {
+
+  if (!history.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "No chats yet.";
+    chatHistoryList.appendChild(empty);
+    return;
+  }
+
+  let currentBucket = null;
+  [...history]
+    .sort((a, b) => lastActivity(b) - lastActivity(a))
+    .forEach((chat) => {
+    const bucket = bucketFor(lastActivity(chat));
+    if (bucket !== currentBucket) {
+      currentBucket = bucket;
+      const label = document.createElement("p");
+      label.className = "history-label";
+      label.textContent = bucket;
+      chatHistoryList.appendChild(label);
+    }
     const item = document.createElement("div");
     item.className = "history-item" + (chat.id === current.id ? " active" : "");
     const titleContainer = document.createElement("div");
@@ -225,27 +209,10 @@ export const initSidebar = () => {
   chatHistoryList = $id("chatHistory");
   newChatButton = $id("newChatButton");
   newChatButtonMain = $id("newChatButtonMain");
-  searchInput = $id("chatSearchInput");
-  searchResults = $id("searchResults");
 
   if (sidebarToggle) sidebarToggle.addEventListener("click", toggleSidebar);
   if (sidebarToggleMain) sidebarToggleMain.addEventListener("click", toggleSidebar);
   if (sidebarOverlay) sidebarOverlay.addEventListener("click", closeSidebarOnMobile);
-
-  const themeToggle = $id("themeToggle");
-  if (themeToggle) themeToggle.addEventListener("click", toggleTheme);
-
-  if (searchInput) {
-    searchInput.addEventListener("input", (e) => handleSearch(e.target.value));
-    searchInput.addEventListener("focus", () => {
-      if (searchInput.value.trim()) handleSearch(searchInput.value);
-    });
-    document.addEventListener("click", (e) => {
-      if (searchResults && !searchResults.contains(e.target) && e.target !== searchInput) {
-        searchResults.classList.add("hidden");
-      }
-    });
-  }
 
   loadSidebarState();
   loadTheme();

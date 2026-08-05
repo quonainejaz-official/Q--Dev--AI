@@ -35,9 +35,11 @@ export const EVENTS = Object.freeze({
     SYSTEM:     'theme:systemChanged',
   },
   AUTH: {
-    LOGIN:      'auth:login',
-    LOGOUT:     'auth:logout',
-    SESSION:    'auth:session',
+    LOGIN:          'auth:login',
+    LOGIN_SUCCESS:  'auth:loginSuccess',
+    LOGIN_REQUIRED: 'auth:loginRequired',
+    LOGOUT:         'auth:logout',
+    SESSION:        'auth:session',
   },
   SIDEBAR: {
     TOGGLE:     'sidebar:toggle',

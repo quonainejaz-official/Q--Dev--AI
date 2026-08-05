@@ -8,6 +8,7 @@ const Chat = require("../models/Chat");
 const Message = require("../models/Message");
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const SharedChat = require("../models/SharedChat");
 
 /**
  * Toggle share link for a chat.
@@ -50,6 +51,38 @@ const toggleShare = async (req, res, next) => {
 };
 
 /**
+ * Create a public shared chat from a guest (no auth required).
+ * POST /api/public/share
+ * Body: { title, messages }
+ */
+const shareGuest = async (req, res, next) => {
+  try {
+    const { title, messages } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "messages array is required" });
+    }
+
+    const normalizedMessages = messages
+      .map((m) => ({
+        role: m.role === "assistant" ? "assistant" : m.role === "bot" ? "assistant" : "user",
+        content: String(m.content || ""),
+        timestamp: m.timestamp || Date.now()
+      }))
+      .filter((m) => m.content.trim().length > 0);
+
+    const shareId = crypto.randomBytes(8).toString("hex");
+
+    const shared = new SharedChat({ shareId, title: title || "Shared Chat", messages: normalizedMessages });
+    await shared.save();
+
+    const shareUrl = `${req.protocol}://${req.get("host")}/shared/${shareId}`;
+    res.json({ shareId, shareUrl });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * Get share status for a chat.
  * GET /api/chats/:id/share
  */
@@ -84,18 +117,43 @@ const viewShared = async (req, res, next) => {
     const { shareId } = req.params;
 
     const chat = await Chat.findOne({ shareId, deletedAt: null });
-    if (!chat) return res.status(404).render("error", { message: "Chat not found or no longer shared." });
+    if (chat) {
+      const messages = await Message.find({ chatId: chat._id })
+        .sort({ timestamp: 1 })
+        .select("role content timestamp")
+        .lean();
 
-    const messages = await Message.find({ chatId: chat._id })
-      .sort({ timestamp: 1 })
-      .select("role content timestamp")
-      .lean();
+      const normalizedMessages = messages.map((m) => ({
+        ...m,
+        role: m.role === "bot" ? "assistant" : m.role
+      }));
 
-    res.render("shared", {
-      chat: { title: chat.title, createdAt: chat.createdAt },
-      messages,
-      shareId
-    });
+      return res.render("shared", {
+        chat: { title: chat.title, createdAt: chat.createdAt },
+        messages: normalizedMessages,
+        shareId
+      });
+    }
+
+    const shared = await SharedChat.findOne({ shareId });
+    if (shared) {
+      shared.views = (shared.views || 0) + 1;
+      await shared.save().catch(() => {});
+
+      const normalizedMessages = (shared.messages || []).map((m) => ({
+        role: m.role === "bot" ? "assistant" : m.role,
+        content: m.content,
+        timestamp: m.timestamp
+      }));
+
+      return res.render("shared", {
+        chat: { title: shared.title, createdAt: shared.createdAt },
+        messages: normalizedMessages,
+        shareId
+      });
+    }
+
+    return res.status(404).render("error", { message: "Chat not found or no longer shared." });
   } catch (err) {
     next(err);
   }
@@ -108,23 +166,23 @@ const viewShared = async (req, res, next) => {
 const getSharedChat = async (req, res, next) => {
   try {
     const { shareId } = req.params;
+    // Try Chat first (registered users)
+    let chat = await Chat.findOne({ shareId, deletedAt: null });
+    if (chat) {
+      const messages = await Message.find({ chatId: chat._id })
+        .sort({ timestamp: 1 })
+        .select("role content timestamp")
+        .lean();
+      return res.json({ title: chat.title, createdAt: chat.createdAt, messages });
+    }
 
-    const chat = await Chat.findOne({ shareId, deletedAt: null });
-    if (!chat) return res.status(404).json({ error: "Chat not found or no longer shared." });
-
-    const messages = await Message.find({ chatId: chat._id })
-      .sort({ timestamp: 1 })
-      .select("role content timestamp")
-      .lean();
-
-    res.json({
-      title: chat.title,
-      createdAt: chat.createdAt,
-      messages
-    });
+    // Fallback: shared guest chats
+    const shared = await SharedChat.findOne({ shareId });
+    if (!shared) return res.status(404).json({ error: "Chat not found or no longer shared." });
+    return res.json({ title: shared.title, createdAt: shared.createdAt, messages: shared.messages || [] });
   } catch (err) {
     next(err);
   }
 };
 
-module.exports = { toggleShare, getShareStatus, viewShared, getSharedChat };
+module.exports = { toggleShare, getShareStatus, viewShared, getSharedChat, shareGuest };

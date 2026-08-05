@@ -3,7 +3,7 @@
  * Caches static assets for offline access. API calls go to network only.
  */
 
-const CACHE_NAME = "qai-v1";
+const CACHE_NAME = "qai-v2";
 const STATIC_ASSETS = [
   "/",
   "/css/styles.css",
@@ -36,6 +36,27 @@ self.addEventListener("fetch", (event) => {
 
   // API calls: network only.
   if (request.url.includes("/api/")) return;
+
+  const isFreshAsset =
+    request.destination === "script" ||
+    request.destination === "style" ||
+    request.url.endsWith(".js") ||
+    request.url.endsWith(".css");
+
+  if (isFreshAsset) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(request).then((cached) => {

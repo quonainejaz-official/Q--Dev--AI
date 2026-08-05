@@ -113,11 +113,24 @@ const googleAuth = async (req, res, next) => {
       return res.status(400).json({ error: "Missing Google credential." });
     }
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID
-    });
-    const payload = ticket.getPayload();
+    // A credential we can't verify is a client problem (expired, wrong
+    // client_id, tampered), not a server fault — 401, not a 500 stack trace.
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID
+      });
+      payload = ticket.getPayload();
+    } catch (verifyError) {
+      console.error("[auth] Google token verification failed:", verifyError.message);
+      return res
+        .status(401)
+        .json({ error: "Google sign-in could not be verified. Please try again." });
+    }
+    if (!payload?.sub) {
+      return res.status(401).json({ error: "Google sign-in returned no account." });
+    }
     const googleId = payload.sub;
     const email = (payload.email || "").toLowerCase();
 

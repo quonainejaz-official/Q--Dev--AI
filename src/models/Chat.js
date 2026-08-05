@@ -14,7 +14,7 @@ const chatSchema = new mongoose.Schema(
     // Soft delete (2.16) — null means not deleted.
     deletedAt: { type: Date, default: null },
     // Shareable link (15) — null means not shared.
-    shareId: { type: String, default: null, sparse: true },
+    shareId: { type: String, default: null },
     sharedAt: { type: Date, default: null }
   },
   { timestamps: true }
@@ -40,18 +40,17 @@ chatSchema.index({ deletedAt: 1 }, { expireAfterSeconds: 2592000, partialFilterE
 // --- Soft-delete helpers (2.16) ---
 
 // Auto-filter deleted docs on find/findOne/findOneAndUpdate.
-const autoFilter = function (next) {
+const autoFilter = function () {
   if (!this.getOptions().includeDeleted) {
     this.where({ deletedAt: null });
   }
-  next();
 };
 
 chatSchema.pre("find", autoFilter);
 chatSchema.pre("findOne", autoFilter);
 chatSchema.pre("findOneAndUpdate", autoFilter);
 chatSchema.pre("countDocuments", autoFilter);
-chatSchema.pre("aggregate", function (next) {
+chatSchema.pre("aggregate", function () {
   // Add soft-delete filter to aggregation pipelines unless already present.
   const hasDeletedAt = this.pipeline().some((stage) => {
     const match = stage.$match;
@@ -60,7 +59,6 @@ chatSchema.pre("aggregate", function (next) {
   if (!hasDeletedAt) {
     this.pipeline().unshift({ $match: { deletedAt: null } });
   }
-  next();
 });
 
 // --- Methods ---

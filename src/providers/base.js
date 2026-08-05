@@ -92,48 +92,112 @@ class BaseProvider {
     const decoder = new TextDecoder();
     let buffer = "";
     let lastUsage = null;
+    let sawDone = false;
 
-    for await (const chunk of response.body) {
-      buffer += decoder.decode(chunk, { stream: true });
+    const processLine = (line) => {
+      if (!line || line.startsWith(":")) return null;
+      if (!line.startsWith("data:")) return null;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") {
+        sawDone = true;
+        return { type: "done", usage: lastUsage || null };
+      }
 
+      let payload;
+      try {
+        payload = JSON.parse(data);
+      } catch {
+        return null;
+      }
+
+      if (payload.error) {
+        const error = typeof payload.error === "string"
+          ? payload.error
+          : payload.error.message || JSON.stringify(payload.error);
+        return { type: "error", error };
+      }
+
+      if (payload.usage) {
+        lastUsage = {
+          tokensIn: payload.usage.prompt_tokens || 0,
+          tokensOut: payload.usage.completion_tokens || 0,
+          model: payload.model || null
+        };
+      }
+
+      const token = this.extractToken(payload);
+      return token ? { type: "token", text: token } : null;
+    };
+
+    const processBuffer = (flush = false) => {
+      const events = [];
       let newlineIndex;
       while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
         const line = buffer.slice(0, newlineIndex).trim();
         buffer = buffer.slice(newlineIndex + 1);
-
-        if (!line || !line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (data === "[DONE]") {
-          // Usage may appear in the last payload before [DONE].
-          yield { type: "done", usage: lastUsage || null };
-          return;
-        }
-
-        let payload;
-        try {
-          payload = JSON.parse(data);
-        } catch {
-          continue;
-        }
-
-        // Capture usage from any payload (typically the last one).
-        if (payload.usage) {
-          lastUsage = {
-            tokensIn: payload.usage.prompt_tokens || 0,
-            tokensOut: payload.usage.completion_tokens || 0,
-            model: payload.model || null
-          };
-        }
-
-        const token = this.extractToken(payload);
-        if (token) yield { type: "token", text: token };
+        const event = processLine(line);
+        if (event) events.push(event);
+        if (sawDone) break;
       }
+
+      if (flush && buffer.trim() && !sawDone) {
+        const event = processLine(buffer.trim());
+        if (event) events.push(event);
+        buffer = "";
+      }
+
+      return events;
+    };
+
+    if (typeof response.body.getReader === "function") {
+      const reader = response.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const events = processBuffer();
+          for (const evt of events) yield evt;
+          if (sawDone) return;
+        }
+      } finally {
+        try { reader.releaseLock(); } catch { /* ignore */ }
+      }
+    } else if (typeof response.body[Symbol.asyncIterator] === "function") {
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+
+        const events = processBuffer();
+        for (const evt of events) yield evt;
+        if (sawDone) return;
+      }
+    } else if (typeof response.body[Symbol.iterator] === "function") {
+      for (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+
+        const events = processBuffer();
+        for (const evt of events) yield evt;
+        if (sawDone) return;
+      }
+    } else {
+      throw new Error(`${this.name}: Response body is not readable.`);
     }
+
+    const events = processBuffer(true);
+    for (const evt of events) yield evt;
+    if (!sawDone) yield { type: "done", usage: lastUsage || null };
   }
 
   /** Override in subclass to extract token from provider-specific payload. */
   extractToken(payload) {
-    return payload?.choices?.[0]?.delta?.content || null;
+    const choice = payload?.choices?.[0];
+    return (
+      choice?.delta?.content ||
+      choice?.message?.content ||
+      choice?.text ||
+      null
+    );
   }
 }
 

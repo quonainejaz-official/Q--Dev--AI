@@ -7,44 +7,45 @@ import { EVENTS } from '../events/events.js';
 import { store } from '../store/Store.js';
 import { ConversationService } from '../services/ConversationService.js';
 import { copyToClipboard } from '../utils/clipboard.js';
+import { getServerId, getChatHistory, getCurrentChat } from '../state.js';
 
 const TEMPLATE = document.createElement('template');
 TEMPLATE.innerHTML = `
 <style>
   :host { display: none; position: fixed; inset: 0; z-index: 9998; }
   :host(.open) { display: flex; align-items: center; justify-content: center; }
-  
+
   .backdrop {
     position: absolute; inset: 0; background: rgba(0,0,0,0.6);
     animation: fadeIn 0.15s ease;
   }
-  
+
   .modal {
     position: relative; background: var(--modal-bg, #1a1a2e);
     border-radius: 16px; padding: 28px; max-width: 440px; width: 90%;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     animation: slideUp 0.2s ease;
   }
-  
+
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-  
+
   .header {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 20px;
   }
-  
+
   .title { font-size: 18px; font-weight: 600; color: var(--text-primary, #e0e0e0); }
-  
+
   .close-btn {
     background: none; border: none; cursor: pointer; padding: 6px;
     color: var(--text-muted, #888); border-radius: 6px; display: flex;
     transition: color 0.15s, background 0.15s;
   }
   .close-btn:hover { color: var(--text-primary, #e0e0e0); background: rgba(255,255,255,0.1); }
-  
+
   .share-options { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-  
+
   .share-option {
     display: flex; align-items: center; gap: 12px; padding: 14px 16px;
     background: var(--hover-bg, rgba(255,255,255,0.05)); border-radius: 10px;
@@ -59,31 +60,31 @@ TEMPLATE.innerHTML = `
     border-color: var(--accent-color, #6c63ff);
     background: rgba(108,99,255,0.12);
   }
-  
+
   .share-icon {
     width: 40px; height: 40px; border-radius: 10px;
     background: var(--accent-color, #6c63ff); display: flex;
     align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
   }
-  
+
   .share-info { flex: 1; }
   .share-label { font-size: 14px; font-weight: 500; color: var(--text-primary, #e0e0e0); }
   .share-desc { font-size: 12px; color: var(--text-muted, #888); margin-top: 2px; }
-  
+
   .link-section {
     background: var(--hover-bg, rgba(255,255,255,0.05)); border-radius: 10px;
     padding: 16px; border: 1px solid var(--border-color, #333);
   }
-  
+
   .link-label {
     font-size: 12px; font-weight: 500; color: var(--text-muted, #888);
     margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;
   }
-  
+
   .link-row {
     display: flex; gap: 8px;
   }
-  
+
   .link-input {
     flex: 1; padding: 10px 12px; border-radius: 8px;
     border: 1px solid var(--border-color, #333); background: var(--input-bg, #0d1117);
@@ -91,7 +92,7 @@ TEMPLATE.innerHTML = `
     font-family: monospace;
   }
   .link-input:focus { border-color: var(--accent-color, #6c63ff); }
-  
+
   .copy-btn {
     padding: 10px 16px; border-radius: 8px; border: none;
     background: var(--accent-color, #6c63ff); color: #fff; font-size: 13px;
@@ -99,23 +100,17 @@ TEMPLATE.innerHTML = `
   }
   .copy-btn:hover { opacity: 0.9; }
   .copy-btn.copied { background: #2ecc71; }
-  
+
   .share-stats {
     display: flex; gap: 16px; margin-top: 12px; padding-top: 12px;
     border-top: 1px solid var(--border-color, #333);
   }
   .stat { font-size: 12px; color: var(--text-muted, #888); }
   .stat-value { font-weight: 600; color: var(--text-primary, #e0e0e0); }
-  
-  .generating {
-    text-align: center; padding: 20px; color: var(--text-muted, #888);
+
+  .error-msg {
+    text-align: center; padding: 12px; color: #ef4444; font-size: 13px;
   }
-  .generating .spinner {
-    width: 24px; height: 24px; border: 3px solid var(--border-color, #333);
-    border-top-color: var(--accent-color, #6c63ff); border-radius: 50%;
-    animation: spin 0.8s linear infinite; margin: 0 auto 12px;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
 <div class="backdrop"></div>
@@ -129,7 +124,7 @@ TEMPLATE.innerHTML = `
       </svg>
     </button>
   </div>
-  
+
   <div class="share-options">
     <div class="share-option active" data-share="link">
       <div class="share-icon">
@@ -143,7 +138,7 @@ TEMPLATE.innerHTML = `
         <div class="share-desc">Anyone with the link can view this chat</div>
       </div>
     </div>
-    
+
     <div class="share-option" data-share="embed">
       <div class="share-icon" style="background: #2ecc71;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -156,7 +151,7 @@ TEMPLATE.innerHTML = `
         <div class="share-desc">Embed this chat in your website</div>
       </div>
     </div>
-    
+
     <div class="share-option" data-share="twitter">
       <div class="share-icon" style="background: #1da1f2;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -169,7 +164,7 @@ TEMPLATE.innerHTML = `
       </div>
     </div>
   </div>
-  
+
   <div class="link-section">
     <div class="link-label">Shareable Link</div>
     <div class="link-row">
@@ -195,12 +190,11 @@ export class ShareModal extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.querySelector('.close-btn').addEventListener('click', () => this.close());
     this.shadowRoot.querySelector('.backdrop').addEventListener('click', () => this.close());
-    
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.classList.contains('open')) this.close();
     });
 
-    // Copy button
     this.shadowRoot.querySelector('.copy-btn').addEventListener('click', () => {
       if (this._shareUrl) {
         copyToClipboard(this._shareUrl);
@@ -214,7 +208,6 @@ export class ShareModal extends HTMLElement {
       }
     });
 
-    // Share options
     this.shadowRoot.querySelectorAll('.share-option').forEach((opt) => {
       opt.addEventListener('click', () => {
         this.shadowRoot.querySelectorAll('.share-option').forEach((o) => o.classList.remove('active'));
@@ -236,19 +229,56 @@ export class ShareModal extends HTMLElement {
     btn.classList.remove('copied');
 
     try {
-      const result = await ConversationService.share(conversationId);
-      // Prefer the server-provided shareUrl; fall back to /shared/<id> if missing.
+      const serverId = getServerId(conversationId);
+      let result;
+
+      if (serverId) {
+        result = await ConversationService.share(serverId);
+      } else {
+        const currentChat = getCurrentChat();
+        const chat = currentChat?.id === conversationId
+          ? currentChat
+          : getChatHistory().find(c => c.id === conversationId) || null;
+
+        if (!chat || !chat.messages || chat.messages.length === 0) {
+          throw new Error('No messages to share');
+        }
+
+        const body = {
+          title: chat.title || 'Shared Chat',
+          messages: chat.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp
+          }))
+        };
+
+        const res = await fetch('/api/public/share', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to create public share');
+        }
+        result = await res.json();
+      }
+
       this._shareUrl = result.shareUrl || `${window.location.origin}/shared/${result.shareId}`;
-      input.value = this._shareUrl || '';
+      input.value = this._shareUrl;
       this.shadowRoot.querySelector('.views').textContent = result.views || 0;
     } catch (err) {
       input.value = 'Failed to generate link';
-      bus.emit(EVENTS.UI.TOAST, { message: 'Failed to generate share link', type: 'error' });
+      this.shadowRoot.querySelector('.link-input').style.color = '#ef4444';
+      bus.emit(EVENTS.UI.TOAST, { message: err.message || 'Failed to generate share link', type: 'error' });
     }
   }
 
   close() {
     this.classList.remove('open');
+    this._shareUrl = '';
   }
 }
 

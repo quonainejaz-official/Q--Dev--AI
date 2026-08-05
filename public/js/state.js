@@ -65,6 +65,13 @@ export const getCurrentChat = () => _currentChat;
 export const setCurrentChatState = (c) => { _currentChat = c; };
 
 export const getServerId = (clientId) => _clientIdToServerId[clientId];
+// Server search results carry Mongo _ids; the UI keys everything by clientId.
+export const getClientIdByServerId = (serverId) => {
+  if (!serverId) return undefined;
+  const target = String(serverId);
+  return Object.keys(_clientIdToServerId)
+    .find((clientId) => String(_clientIdToServerId[clientId]) === target);
+};
 export const setServerId = (clientId, serverId) => { _clientIdToServerId[clientId] = serverId; };
 export const deleteServerId = (clientId) => { delete _clientIdToServerId[clientId]; };
 export const clearServerIds = () => { Object.keys(_clientIdToServerId).forEach(k => delete _clientIdToServerId[k]); };

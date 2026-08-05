@@ -20,7 +20,7 @@ const usersRoutes = require("./routes/users");
 const messagesRoutes = require("./routes/messages");
 const mediaRoutes = require("./routes/media");
 const { attachUser } = require("./middlewares/auth");
-const { apiLimiter, authLimiter, chatsLimiter } = require("./middlewares/rateLimiter");
+const { apiLimiter, chatsLimiter } = require("./middlewares/rateLimiter");
 const { notFoundHandler, errorHandler } = require("./middlewares/errorHandler");
 const { initProviders } = require("./providers/registry");
 const { viewShared, getSharedChat } = require("./controllers/shareController");
@@ -44,15 +44,24 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://*.googleusercontent.com"],
       connectSrc: ["'self'", "https://accounts.google.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      frameSrc: ["https://accounts.google.com"],
+      frameSrc: ["'self'", "https://accounts.google.com"],
+      formAction: ["'self'", "https://accounts.google.com"],
       objectSrc: ["'none'"]
     }
   } : false,
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  // Google Identity Services signs in via a popup that posts the credential
+  // back to window.opener. COOP "same-origin" (helmet's default) nulls out
+  // the opener, so the popup hangs on accounts.google.com/gsi/transform and
+  // the callback never fires. "same-origin-allow-popups" keeps the isolation
+  // for embedders while letting our own popups talk back to us.
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  // GSI requires the origin to be sent; helmet's default "no-referrer" breaks it.
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" }
 }));
 
 // --- MongoDB injection protection ---
@@ -82,7 +91,8 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/healthz", healthRoutes);
 app.use("/readyz", healthRoutes);
 app.use("/", indexRoutes);
-app.use("/api/auth", authLimiter, authRoutes);
+// authRoutes applies authLimiter per-route (credential endpoints only).
+app.use("/api/auth", authRoutes);
 app.use("/api/users", chatsLimiter, usersRoutes);
 app.use("/api/chats", chatsLimiter, chatsRoutes);
 app.use("/api/messages", chatsLimiter, messagesRoutes);

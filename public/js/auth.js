@@ -3,39 +3,22 @@ import { apiFetch } from "./api.js";
 import { getAuthUser, setAuthUser, isLoggedIn, clearServerIds, migrateGuestChats, loadCloudChats, saveLocal } from "./state.js";
 import { renderHistoryList } from "./sidebar.js";
 
-let loginButton, accountChip, accountAvatar, accountName, accountEmail, logoutButton;
 let authModal, authClose, authTitle, authTabs, authForm, authNameRow;
 let authName, authEmail, authPassword, authError, authSubmit;
 
 let authMode = "login";
 let googleInitialized = false;
 
-const updateAuthUI = () => {
-  const user = getAuthUser();
-  if (user) {
-    loginButton?.classList.add("hidden");
-    accountChip?.classList.remove("hidden");
-    if (accountName) accountName.textContent = user.name || "Account";
-    if (accountEmail) accountEmail.textContent = user.email || "";
-    if (accountAvatar) {
-      if (user.avatar) {
-        accountAvatar.style.backgroundImage = `url(${user.avatar})`;
-        accountAvatar.textContent = "";
-      } else {
-        accountAvatar.style.backgroundImage = "";
-        accountAvatar.textContent = (user.name || user.email || "?").charAt(0).toUpperCase();
-      }
-    }
-  } else {
-    loginButton?.classList.remove("hidden");
-    accountChip?.classList.add("hidden");
-  }
-};
-
 const showAuthError = (msg) => {
   if (!authError) return;
   authError.textContent = msg;
   authError.classList.remove("hidden");
+};
+
+// Rate-limit and proxy errors can come back as HTML/plain text, which would
+// make res.json() throw and mask the real status code.
+const readJson = async (res) => {
+  try { return await res.json(); } catch { return {}; }
 };
 
 const setAuthMode = (mode) => {
@@ -54,15 +37,27 @@ const initGoogleButton = () => {
     google.accounts.id.initialize({
       client_id: clientId,
       callback: async (response) => {
+        if (!response?.credential) {
+          console.error("[auth] Google returned no credential", response);
+          showAuthError("Google did not return a credential. Please try again.");
+          return;
+        }
         try {
           const res = await apiFetch("/api/auth/google", {
             method: "POST",
             body: JSON.stringify({ credential: response.credential })
           });
-          const data = await res.json();
-          if (res.ok && data.user) await onLoginSuccess(data.user);
-          else showAuthError(data.error || "Google sign-in failed.");
-        } catch { showAuthError("Google sign-in failed."); }
+          const data = await readJson(res);
+          if (res.ok && data.user) {
+            await onLoginSuccess(data.user);
+            return;
+          }
+          console.error("[auth] /api/auth/google failed", res.status, data);
+          showAuthError(data.error || `Google sign-in failed (HTTP ${res.status}).`);
+        } catch (err) {
+          console.error("[auth] Google sign-in request threw", err);
+          showAuthError("Could not reach the server. Please try again.");
+        }
       }
     });
     const googleBtn = $id("googleBtn");
@@ -90,12 +85,17 @@ const closeAuthModal = () => authModal?.classList.add("hidden");
 
 const onLoginSuccess = async (user) => {
   setAuthUser(user);
-  updateAuthUI();
   closeAuthModal();
   await migrateGuestChats();
   const changed = await loadCloudChats();
   if (changed) renderHistoryList();
   showToast(`Signed in as ${user.name || user.email}.`, "success");
+
+  try {
+    const { bus } = await import('./events/EventBus.js');
+    const { EVENTS } = await import('./events/events.js');
+    bus.emit(EVENTS.AUTH.LOGIN_SUCCESS);
+  } catch { /* ignore */ }
 };
 
 const handleAuthSubmit = async (e) => {
@@ -121,17 +121,29 @@ const handleLogout = async () => {
   try { await apiFetch("/api/auth/logout", { method: "POST" }); } catch { /* ignore */ }
   setAuthUser(null);
   clearServerIds();
-  updateAuthUI();
   showToast("Logged out.", "success");
+
+  try {
+    const { bus } = await import('./events/EventBus.js');
+    const { EVENTS } = await import('./events/events.js');
+    bus.emit(EVENTS.AUTH.LOGOUT);
+  } catch { /* ignore */ }
 };
 
 const checkAuth = async () => {
   try {
     const res = await apiFetch("/api/auth/me");
-    const data = await res.json();
+    const data = await readJson(res);
+    if (!res.ok) {
+      // A 429/5xx here is not proof of being signed out — say so loudly rather
+      // than silently dropping the session on the floor.
+      console.error("[auth] /api/auth/me failed", res.status, data);
+    }
     setAuthUser(data.user || null);
-  } catch { setAuthUser(null); }
-  updateAuthUI();
+  } catch (err) {
+    console.error("[auth] /api/auth/me threw", err);
+    setAuthUser(null);
+  }
   if (isLoggedIn()) {
     const changed = await loadCloudChats();
     if (changed) renderHistoryList();
@@ -139,12 +151,6 @@ const checkAuth = async () => {
 };
 
 export const initAuth = () => {
-  loginButton = $id("loginButton");
-  accountChip = $id("accountChip");
-  accountAvatar = $id("accountAvatar");
-  accountName = $id("accountName");
-  accountEmail = $id("accountEmail");
-  logoutButton = $id("logoutButton");
   authModal = $id("authModal");
   authClose = $id("authClose");
   authTitle = $id("authTitle");
@@ -157,12 +163,19 @@ export const initAuth = () => {
   authError = $id("authError");
   authSubmit = $id("authSubmit");
 
-  loginButton?.addEventListener("click", openAuthModal);
   authClose?.addEventListener("click", closeAuthModal);
-  logoutButton?.addEventListener("click", handleLogout);
   authForm?.addEventListener("submit", handleAuthSubmit);
   authTabs?.forEach(t => t.addEventListener("click", () => setAuthMode(t.dataset.mode)));
   authModal?.addEventListener("click", (e) => { if (e.target === authModal) closeAuthModal(); });
+
+  try {
+    import('./events/EventBus.js').then(({ bus }) => {
+      import('./events/events.js').then(({ EVENTS }) => {
+        bus.on(EVENTS.AUTH.LOGIN_REQUIRED, openAuthModal);
+        bus.on(EVENTS.AUTH.LOGOUT, handleLogout);
+      });
+    });
+  } catch { /* ignore */ }
 
   checkAuth();
 };
