@@ -34,6 +34,7 @@ import '../components/ShareModal.js';
 
 // ── Services ─────────────────────────────────────────────────────────
 import { ThemeService } from '../services/ThemeService.js';
+import { AppearanceService } from '../services/AppearanceService.js';
 import { AuthService } from '../services/AuthService.js';
 import { store } from '../store/Store.js';
 import { bus } from '../events/EventBus.js';
@@ -44,6 +45,7 @@ function init() {
   try {
     // 1. Theme
     ThemeService.init();
+    AppearanceService.init();
 
     // 2. Auth session restore
     AuthService.init();

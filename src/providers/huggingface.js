@@ -40,8 +40,8 @@ class HuggingFaceProvider extends BaseProvider {
     };
   }
 
-  _buildMessages(history, text) {
-    const messages = [{ role: "system", content: SYSTEM_PROMPT }];
+  _buildMessages(history, text, personalizationPrompt = "") {
+    const messages = [{ role: "system", content: `${SYSTEM_PROMPT}\n\n${personalizationPrompt}`.trim() }];
 
     if (Array.isArray(history)) {
       for (const item of history) {
@@ -56,7 +56,7 @@ class HuggingFaceProvider extends BaseProvider {
     return messages;
   }
 
-  async *stream({ message, history, images, audios, videos, pdfs }) {
+  async *stream({ message, history, images, audios, videos, pdfs, personalizationPrompt }) {
     if (hasAnyMedia({ images, audios, videos, pdfs })) {
       throw new Error("Hugging Face fallback is currently text-only.");
     }
@@ -67,7 +67,7 @@ class HuggingFaceProvider extends BaseProvider {
       body: JSON.stringify({
         model: this.model,
         stream: true,
-        messages: this._buildMessages(history, message)
+        messages: this._buildMessages(history, message, personalizationPrompt)
       })
     });
 

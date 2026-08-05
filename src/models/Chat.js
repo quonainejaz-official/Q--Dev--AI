@@ -15,7 +15,8 @@ const chatSchema = new mongoose.Schema(
     deletedAt: { type: Date, default: null },
     // Shareable link (15) — null means not shared.
     shareId: { type: String, default: null },
-    sharedAt: { type: Date, default: null }
+    sharedAt: { type: Date, default: null },
+    shareViews: { type: Number, default: 0 }
   },
   { timestamps: true }
 );
