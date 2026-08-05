@@ -71,8 +71,8 @@ class OpenCodeProvider extends BaseProvider {
     return hasAnyMedia(params) ? VISION_MODEL : CHAT_MODEL;
   }
 
-  async _buildMessages(history, text, images, audios, videos, pdfs) {
-    const messages = [{ role: "system", content: SYSTEM_PROMPT }];
+  async _buildMessages(history, text, images, audios, videos, pdfs, personalizationPrompt = "") {
+    const messages = [{ role: "system", content: `${SYSTEM_PROMPT}\n\n${personalizationPrompt}`.trim() }];
 
     if (Array.isArray(history)) {
       for (const item of history) {
@@ -135,9 +135,9 @@ class OpenCodeProvider extends BaseProvider {
     };
   }
 
-  async *stream({ message, history, images, audios, videos, pdfs }) {
+  async *stream({ message, history, images, audios, videos, pdfs, personalizationPrompt }) {
     const model = this._pickModel({ images, audios, videos, pdfs });
-    const messages = await this._buildMessages(history, message, images, audios, videos, pdfs);
+    const messages = await this._buildMessages(history, message, images, audios, videos, pdfs, personalizationPrompt);
 
     const body = JSON.stringify({ model, stream: true, messages });
     const response = await this.fetchWithRetry(this.apiUrl, {

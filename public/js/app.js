@@ -16,6 +16,7 @@ import { initAuth } from "./auth.js";
 import { initSpeech } from "./speech.js";
 import { initPdf } from "./pdf.js";
 import { initSearchModal } from "./components/SearchModal.js";
+import { StorageService } from "./services/StorageService.js";
 
 // --- Message limits ---
 const MESSAGE_LIMITS = { maxLines: 5000, maxChars: 50000, maxWords: 50000, maxTextareaHeightPx: 200 };
@@ -119,7 +120,15 @@ const submitMessage = async () => {
   messageInput.style.height = "auto";
   sendButton.disabled = true;
 
-  const body = { message, history: historyForRequest };
+  const body = {
+    message,
+    history: historyForRequest,
+    personalization: {
+      customInstructions: StorageService.get("customInstructions") || "",
+      responseStyle: StorageService.get("responseStyle") || "balanced",
+      memoryEnabled: StorageService.get("memoryEnabled") !== "false"
+    }
+  };
   if (hasImages) body.images = mediaPayload.images;
   if (hasAudios) body.audios = mediaPayload.audios;
   if (hasVideos) body.videos = mediaPayload.videos;

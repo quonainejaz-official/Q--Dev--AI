@@ -47,7 +47,10 @@ export const applyTheme = (theme) => {
 };
 
 const loadTheme = () => {
-  const saved = localStorage.getItem(THEME_KEY);
+  let saved = localStorage.getItem(THEME_KEY);
+  if (saved?.startsWith('"')) {
+    try { saved = JSON.parse(saved); } catch { saved = null; }
+  }
   if (saved === "system") {
     const sys = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", sys);

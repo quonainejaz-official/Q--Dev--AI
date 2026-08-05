@@ -21,7 +21,8 @@ TEMPLATE.innerHTML = `
   }
 
   .modal {
-    position: relative; background: var(--modal-bg, #1a1a2e);
+    position: relative; background: var(--modal-bg, var(--surface-bg, #202020));
+    border: 1px solid var(--border-color, #333);
     border-radius: 16px; padding: 28px; max-width: 440px; width: 90%;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     animation: slideUp 0.2s ease;
@@ -48,17 +49,17 @@ TEMPLATE.innerHTML = `
 
   .share-option {
     display: flex; align-items: center; gap: 12px; padding: 14px 16px;
-    background: var(--hover-bg, rgba(255,255,255,0.05)); border-radius: 10px;
+    background: var(--surface-elevated, var(--hover-bg, #272727)); border-radius: 10px;
     border: 1px solid var(--border-color, #333); cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
   }
   .share-option:hover {
     border-color: var(--accent-color, #6c63ff);
-    background: rgba(108,99,255,0.08);
+    background: color-mix(in srgb, var(--accent-color, #6c63ff) 10%, var(--surface-elevated, #272727));
   }
   .share-option.active {
     border-color: var(--accent-color, #6c63ff);
-    background: rgba(108,99,255,0.12);
+    background: color-mix(in srgb, var(--accent-color, #6c63ff) 14%, var(--surface-elevated, #272727));
   }
 
   .share-icon {
@@ -72,7 +73,7 @@ TEMPLATE.innerHTML = `
   .share-desc { font-size: 12px; color: var(--text-muted, #888); margin-top: 2px; }
 
   .link-section {
-    background: var(--hover-bg, rgba(255,255,255,0.05)); border-radius: 10px;
+    background: var(--surface-elevated, var(--hover-bg, #272727)); border-radius: 10px;
     padding: 16px; border: 1px solid var(--border-color, #333);
   }
 
@@ -152,17 +153,6 @@ TEMPLATE.innerHTML = `
       </div>
     </div>
 
-    <div class="share-option" data-share="twitter">
-      <div class="share-icon" style="background: #1da1f2;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-        </svg>
-      </div>
-      <div class="share-info">
-        <div class="share-label">Share on X</div>
-        <div class="share-desc">Share this conversation on X (Twitter)</div>
-      </div>
-    </div>
   </div>
 
   <div class="link-section">
@@ -212,10 +202,6 @@ export class ShareModal extends HTMLElement {
       opt.addEventListener('click', () => {
         this.shadowRoot.querySelectorAll('.share-option').forEach((o) => o.classList.remove('active'));
         opt.classList.add('active');
-        const type = opt.dataset.share;
-        if (type === 'twitter' && this._shareUrl) {
-          window.open(`https://twitter.com/intent/tweet?text=Check%20out%20this%20chat&url=${encodeURIComponent(this._shareUrl)}`, '_blank');
-        }
       });
     });
   }
@@ -225,10 +211,27 @@ export class ShareModal extends HTMLElement {
     const input = this.shadowRoot.querySelector('.link-input');
     const btn = this.shadowRoot.querySelector('.copy-btn');
     input.value = '';
+    input.style.color = '';
     btn.textContent = 'Copy';
+    btn.disabled = true;
     btn.classList.remove('copied');
 
     try {
+      const cacheKey = `qai_share_${conversationId}`;
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached?.shareId && cached?.shareUrl) {
+        const statusRes = await fetch(`/api/shared/${encodeURIComponent(cached.shareId)}`);
+        if (statusRes.ok) {
+          const status = await statusRes.json();
+          this._shareUrl = cached.shareUrl;
+          input.value = cached.shareUrl;
+          btn.disabled = false;
+          this.shadowRoot.querySelector('.views').textContent = status.views || 0;
+          return;
+        }
+        localStorage.removeItem(cacheKey);
+      }
+
       const serverId = getServerId(conversationId);
       let result;
 
@@ -268,10 +271,13 @@ export class ShareModal extends HTMLElement {
 
       this._shareUrl = result.shareUrl || `${window.location.origin}/shared/${result.shareId}`;
       input.value = this._shareUrl;
+      btn.disabled = false;
       this.shadowRoot.querySelector('.views').textContent = result.views || 0;
+      localStorage.setItem(cacheKey, JSON.stringify({ shareId: result.shareId, shareUrl: this._shareUrl }));
     } catch (err) {
       input.value = 'Failed to generate link';
       this.shadowRoot.querySelector('.link-input').style.color = '#ef4444';
+      btn.disabled = true;
       bus.emit(EVENTS.UI.TOAST, { message: err.message || 'Failed to generate share link', type: 'error' });
     }
   }

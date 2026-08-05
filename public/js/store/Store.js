@@ -118,7 +118,7 @@ const initialState = {
   abortController: null,
 
   // UI
-  theme: localStorage.getItem('qai_theme') || 'dark',
+  theme: (localStorage.getItem('qai_theme') || 'dark').replaceAll('"', ''),
   sidebarOpen: window.innerWidth > 768,
   isMobile: window.innerWidth <= 768,
   isImageGenLoading: false,

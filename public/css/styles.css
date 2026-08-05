@@ -31,11 +31,17 @@
   --surface-elevated: #272727;
   --text-primary: #ececec;
   --text-secondary: #9b9b9b;
+  --text-muted: var(--text-secondary);
   --border-color: #2d2d2d;
   --accent-blue: #4c82fb;
+  --accent-color: var(--accent-blue);
   --accent-green: #10a37f;
   --hover-bg: #2a2a2a;
   --input-bg: #242424;
+  --modal-bg: var(--surface-bg);
+  --chat-background: var(--main-bg);
+  --user-bubble-bg: var(--accent-green);
+  --assistant-bubble-bg: color-mix(in srgb, var(--surface-bg) 88%, #ffffff 4%);
   --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.24);
   --sidebar-width: 260px;
 }
@@ -47,11 +53,17 @@
   --surface-elevated: #f3f5f7;
   --text-primary: #1a1a1a;
   --text-secondary: #6b6b6b;
+  --text-muted: var(--text-secondary);
   --border-color: #e5e5e5;
   --accent-blue: #2563eb;
+  --accent-color: var(--accent-blue);
   --accent-green: #0f8f72;
   --hover-bg: #f0f0f0;
   --input-bg: #ffffff;
+  --modal-bg: var(--surface-bg);
+  --chat-background: var(--main-bg);
+  --user-bubble-bg: var(--accent-green);
+  --assistant-bubble-bg: var(--surface-bg);
   --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
 }
 
@@ -71,7 +83,7 @@
 [data-theme="light"] .token-number { color: #0550ae; }
 [data-theme="light"] .token-comment { color: #6e7781; }
 [data-theme="light"] .token-operator { color: #cf222e; }
-[data-theme="light"] .message.user .message-text { background: #e8edf3; color: #1a1a1a; }
+[data-theme="light"] .message.user .message-text { background: var(--user-bubble-bg); color: #ffffff; }
 [data-theme="light"] .add-menu { background: #ffffff; border-color: #e5e5e5; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
 [data-theme="light"] .add-menu-item:hover { background: #f0f0f0; }
 [data-theme="light"] .add-menu-divider { background: #e5e5e5; }
@@ -458,7 +470,7 @@ body {
 }
 
 .app-container.sidebar-collapsed .chat-header {
-  padding-left: 100px;
+  padding-left: 148px;
 }
 
 .chat-title {
@@ -1739,7 +1751,7 @@ body {
     pointer-events: none;
   }
 
-  .sidebar-toggle-main, .new-chat-btn-main {
+  .sidebar-toggle-main, .new-chat-btn-main, .search-btn-main {
     display: flex !important;
     pointer-events: auto;
     top: 12px;
@@ -1797,7 +1809,7 @@ body {
   }
 
   .chat-header {
-    padding: 12px 15px 12px 85px !important;
+    padding: 12px 15px 12px 148px !important;
     height: 60px;
     display: flex;
     align-items: center;
@@ -2238,6 +2250,10 @@ body {
 
 /* Mirrors .new-chat-btn-main placement; only shown when the sidebar is closed. */
 .search-btn-main {
+  position: absolute;
+  top: 12px;
+  left: 100px;
+  z-index: 10;
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -2316,20 +2332,26 @@ body {
 .search-panel-input::placeholder { color: var(--text-secondary); }
 .search-panel-close {
   flex-shrink: 0;
-  background: var(--hover-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  padding: 3px 7px;
-  transition: color 0.2s ease, border-color 0.2s ease;
+  padding: 7px;
+  transition: color 0.2s ease, background 0.2s ease;
 }
 .search-panel-close:hover {
   color: var(--text-primary);
-  border-color: var(--text-secondary);
+  background: var(--hover-bg);
+}
+.search-panel-close:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
 }
 
 .search-panel-results {
@@ -2581,7 +2603,7 @@ body {
 .main-content {
   background:
     radial-gradient(circle at 50% -12%, rgba(16, 163, 127, 0.12), transparent 34%),
-    var(--main-bg);
+    var(--chat-background);
 }
 
 .welcome-screen {
@@ -2614,14 +2636,14 @@ body {
 }
 
 .message.user .message-text {
-  background: var(--accent-green);
+  background: var(--user-bubble-bg);
   color: #ffffff;
   border: 1px solid color-mix(in srgb, var(--accent-green) 70%, #ffffff 30%);
   box-shadow: 0 10px 24px rgba(16, 163, 127, 0.18);
 }
 
 .message.bot .message-text {
-  background: color-mix(in srgb, var(--surface-bg) 88%, #ffffff 4%);
+  background: var(--assistant-bubble-bg);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 12px 16px;

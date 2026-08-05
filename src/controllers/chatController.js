@@ -1,4 +1,6 @@
 const { registry } = require("../providers/registry");
+const { SYSTEM_PROMPT } = require("../prompt/layers/system");
+const { buildUserContent } = require("../prompt/promptBuilder");
 const { generateImage } = require("../services/imageGenService");
 const { validateMedia } = require("../utils/mediaValidation");
 const {
@@ -119,9 +121,42 @@ const postMessage = async (req, res, next) => {
         ? incomingHistory.slice(0, -1)
         : incomingHistory;
 
-    const streamArgs = hasMedia
-      ? { message: cleanMessage, history: historyForModel, images, audios, videos, pdfs }
-      : { message: cleanMessage, history: historyForModel, images: [], audios: [], videos: [], pdfs: [] };
+    const personalization = req.body?.personalization || {};
+    const customInstructions = typeof personalization.customInstructions === "string"
+      ? personalization.customInstructions.trim().slice(0, 4000)
+      : "";
+    const allowedStyles = new Set(["concise", "balanced", "detailed"]);
+    const responseStyle = allowedStyles.has(personalization.responseStyle)
+      ? personalization.responseStyle
+      : "balanced";
+    const styleInstruction = {
+      concise: "Keep responses concise and action-oriented unless detail is requested.",
+      balanced: "Use a balanced level of detail with clear explanations and practical examples when useful.",
+      detailed: "Provide thorough, step-by-step responses with helpful context and examples."
+    }[responseStyle];
+    const personalizationPrompt = [
+      personalization.memoryEnabled !== false && customInstructions
+        ? `User custom instructions:\n${customInstructions}`
+        : "",
+      `Preferred response style: ${styleInstruction}`
+    ].filter(Boolean).join("\n\n");
+
+    const media = hasMedia ? { images, audios, videos, pdfs } : { images: [], audios: [], videos: [], pdfs: [] };
+    const modelMessages = [
+      { role: "system", content: `${SYSTEM_PROMPT}\n\n${personalizationPrompt}` },
+      ...historyForModel.map((item) => ({
+        role: item.role === "bot" ? "assistant" : "user",
+        content: item.content
+      })),
+      { role: "user", content: buildUserContent(cleanMessage, media) }
+    ];
+    const streamArgs = {
+      message: cleanMessage,
+      history: historyForModel,
+      ...media,
+      messages: modelMessages,
+      personalizationPrompt
+    };
 
     // Select providers for fallback (2.2) based on capabilities needed.
     const providers = registry.selectAll({ vision: hasMedia, streaming: true });

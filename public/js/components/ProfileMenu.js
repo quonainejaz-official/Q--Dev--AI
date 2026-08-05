@@ -87,7 +87,7 @@ TEMPLATE.innerHTML = `
   .logout-btn:hover svg { color: #ef4444; }
 </style>
 
-<div class="trigger" tabindex="0" role="button" aria-haspopup="true">
+<div class="trigger" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
   <div class="user-badge-group">
     <div class="avatar">G</div>
     <div class="user-info">
@@ -252,18 +252,23 @@ export class ProfileMenu extends HTMLElement {
   }
 
   _toggle() {
-    this._isOpen = !this._isOpen;
-    this.shadowRoot.querySelector('.dropdown').classList.toggle('open', this._isOpen);
+    const dropdown = this.shadowRoot.querySelector('.dropdown');
+    const shouldOpen = !dropdown.classList.contains('open');
+    this._isOpen = shouldOpen;
+    dropdown.classList.toggle('open', shouldOpen);
+    this.shadowRoot.querySelector('.trigger').setAttribute('aria-expanded', String(shouldOpen));
   }
 
   _close() {
     this._isOpen = false;
     this.shadowRoot.querySelector('.dropdown').classList.remove('open');
+    this.shadowRoot.querySelector('.trigger').setAttribute('aria-expanded', 'false');
   }
 
   openDropdown() {
     this._isOpen = true;
     this.shadowRoot.querySelector('.dropdown').classList.add('open');
+    this.shadowRoot.querySelector('.trigger').setAttribute('aria-expanded', 'true');
   }
 
   closeDropdown() {

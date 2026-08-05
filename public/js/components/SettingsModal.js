@@ -9,6 +9,7 @@ import { store } from '../store/Store.js';
 import { ThemeService } from '../services/ThemeService.js';
 import { AuthService } from '../services/AuthService.js';
 import { StorageService } from '../services/StorageService.js';
+import { AppearanceService } from '../services/AppearanceService.js';
 
 const TABS = [
   { id: 'general', label: 'General', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' },
@@ -141,6 +142,28 @@ TEMPLATE.innerHTML = `
   }
   .accent-color:hover { transform: scale(1.1); }
   .accent-color.active { border-color: #fff; }
+
+  .color-customizer {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px; margin-top: 12px;
+  }
+  .color-field {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 12px; border: 1px solid var(--border-color, #333);
+    border-radius: 8px; background: var(--surface-elevated, var(--input-bg, #272727));
+    color: var(--text-primary, #e0e0e0); font-size: 12px;
+  }
+  .color-field input[type="color"] {
+    width: 34px; height: 28px; padding: 2px; border: 1px solid var(--border-color, #333);
+    border-radius: 6px; background: transparent; cursor: pointer;
+  }
+  .reset-colors-btn {
+    margin-top: 10px; border: 1px solid var(--border-color, #333); border-radius: 8px;
+    background: transparent; color: var(--text-primary, #e0e0e0); padding: 8px 12px;
+    cursor: pointer; font: inherit; font-size: 12px;
+  }
+  .reset-colors-btn:hover { background: var(--hover-bg, rgba(255,255,255,.06)); }
+  @media (max-width: 640px) { .color-customizer { grid-template-columns: 1fr; } }
 
   .btn-danger {
     padding: 8px 16px; border-radius: 8px; border: 1px solid #e74c3c;
@@ -378,10 +401,10 @@ export class SettingsModal extends HTMLElement {
       const val = e.target.value;
       if (val === 'system') {
         const sys = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', sys);
+        ThemeService.apply(sys);
         localStorage.setItem('qai_theme', 'system');
       } else {
-        document.documentElement.setAttribute('data-theme', val);
+        ThemeService.apply(val);
         localStorage.setItem('qai_theme', val);
       }
       bus.emit(EVENTS.THEME.TOGGLED);
@@ -392,7 +415,7 @@ export class SettingsModal extends HTMLElement {
       el.addEventListener('click', () => {
         this._content.querySelectorAll('.accent-color').forEach((c) => c.classList.remove('active'));
         el.classList.add('active');
-        document.documentElement.style.setProperty('--accent-color', el.dataset.color);
+        AppearanceService.set('accentColor', el.dataset.color);
       });
     });
   }
@@ -401,9 +424,24 @@ export class SettingsModal extends HTMLElement {
     const customInstructions = StorageService.get('customInstructions') || '';
     const responseStyle = StorageService.get('responseStyle') || 'balanced';
     const memoryEnabled = StorageService.get('memoryEnabled') !== 'false';
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const chatBackground = AppearanceService.get('chatBackground') || (isLight ? '#f7f7f8' : '#1a1a1a');
+    const userBubbleColor = AppearanceService.get('userBubbleColor') || '#10a37f';
+    const assistantBubbleColor = AppearanceService.get('assistantBubbleColor') || (isLight ? '#ffffff' : '#202020');
 
     this._content.innerHTML = `
       <h2 class="section-title">Personalization</h2>
+
+      <div class="setting-group">
+        <div class="setting-label">Chat appearance</div>
+        <div class="setting-desc">Choose colors for the chat canvas and message cards. Changes are saved on this device.</div>
+        <div class="color-customizer">
+          <label class="color-field">Chat background <input type="color" data-chat-color="chatBackground" value="${chatBackground}"></label>
+          <label class="color-field">Your messages <input type="color" data-chat-color="userBubbleColor" value="${userBubbleColor}"></label>
+          <label class="color-field">AI messages <input type="color" data-chat-color="assistantBubbleColor" value="${assistantBubbleColor}"></label>
+        </div>
+        <button class="reset-colors-btn" id="resetChatColors" type="button">Use theme defaults</button>
+      </div>
 
       <div class="setting-group">
         <div class="setting-label">Custom Instructions</div>
@@ -467,6 +505,16 @@ export class SettingsModal extends HTMLElement {
       const text = this._content.querySelector('#customInstrBox').value;
       StorageService.set('customInstructions', text);
       bus.emit(EVENTS.UI.TOAST, { message: 'Custom instructions saved', type: 'success' });
+    });
+
+    this._content.querySelectorAll('[data-chat-color]').forEach((input) => {
+      input.addEventListener('input', () => AppearanceService.set(input.dataset.chatColor, input.value));
+    });
+
+    this._content.querySelector('#resetChatColors').addEventListener('click', () => {
+      AppearanceService.resetChatColors();
+      this._renderPersonalization();
+      bus.emit(EVENTS.UI.TOAST, { message: 'Chat colors reset to theme defaults', type: 'success' });
     });
 
     this._content.querySelectorAll('.style-option').forEach((btn) => {

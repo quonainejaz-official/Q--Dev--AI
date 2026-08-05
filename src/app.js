@@ -98,7 +98,6 @@ app.use("/api/chats", chatsLimiter, chatsRoutes);
 app.use("/api/messages", chatsLimiter, messagesRoutes);
 app.use("/api/media", chatsLimiter, mediaRoutes);
 app.use("/api/search", apiLimiter, searchRoutes);
-app.use("/api/shared", viewShared);
 app.get("/api/shared/:shareId", getSharedChat);
 app.get("/shared/:shareId", viewShared);
 app.use("/api", apiLimiter, apiRoutes);
