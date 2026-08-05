@@ -34,7 +34,7 @@ TEMPLATE.innerHTML = `
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.success { background: #2ecc71; }
   .toast.error { background: #e74c3c; }
-  .toast.info { background: #3498db; }
+  .toast.info { background: var(--accent-color, #5b7cfa); }
   .toast.warning { background: #f39c12; }
 </style>
 <div id="container"></div>

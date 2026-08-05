@@ -27,7 +27,7 @@ TEMPLATE.innerHTML = `
 
   .avatar {
     width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--accent-color, #4c82fb), #7357e8);
+    background: linear-gradient(135deg, var(--accent-color, #5b7cfa), color-mix(in srgb, var(--accent-color, #5b7cfa) 72%, #ffffff));
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase;
   }

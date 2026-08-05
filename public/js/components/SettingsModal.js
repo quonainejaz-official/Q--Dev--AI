@@ -132,7 +132,7 @@ TEMPLATE.innerHTML = `
     left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
     transition: transform 0.2s;
   }
-  .toggle input:checked + .toggle-slider { background: #10a37f; }
+  .toggle input:checked + .toggle-slider { background: var(--accent-color, #5b7cfa); }
   .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
 
   .accent-colors { display: flex; gap: 8px; }
@@ -142,9 +142,13 @@ TEMPLATE.innerHTML = `
   }
   .accent-color:hover { transform: scale(1.1); }
   .accent-color.active { border-color: #fff; }
+  .accent-custom {
+    width: 28px; height: 28px; padding: 2px; border: 1px solid var(--border-color, #444);
+    border-radius: 50%; background: transparent; cursor: pointer;
+  }
 
   .color-customizer {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px; margin-top: 12px;
   }
   .color-field {
@@ -342,6 +346,8 @@ export class SettingsModal extends HTMLElement {
 
   _renderGeneral() {
     const savedTheme = localStorage.getItem('qai_theme') || 'dark';
+    const defaultAccent = document.documentElement.getAttribute('data-theme') === 'light' ? '#3568e8' : '#5b7cfa';
+    const savedAccent = AppearanceService.get('accentColor') || defaultAccent;
     this._content.innerHTML = `
       <h2 class="section-title">General</h2>
 
@@ -364,11 +370,11 @@ export class SettingsModal extends HTMLElement {
             <div class="setting-desc">Customize theme accent color</div>
           </div>
           <div class="accent-colors">
-            <div class="accent-color" style="background: #10a37f;" data-color="#10a37f"></div>
-            <div class="accent-color" style="background: #6c63ff;" data-color="#6c63ff"></div>
-            <div class="accent-color" style="background: #2ecc71;" data-color="#2ecc71"></div>
-            <div class="accent-color" style="background: #3498db;" data-color="#3498db"></div>
-            <div class="accent-color" style="background: #f39c12;" data-color="#f39c12"></div>
+            <div class="accent-color ${savedAccent === defaultAccent ? 'active' : ''}" style="background: ${defaultAccent};" data-color="${defaultAccent}" title="Theme default"></div>
+            <div class="accent-color ${savedAccent === '#10a37f' ? 'active' : ''}" style="background: #10a37f;" data-color="#10a37f" title="Emerald"></div>
+            <div class="accent-color ${savedAccent === '#8b5cf6' ? 'active' : ''}" style="background: #8b5cf6;" data-color="#8b5cf6" title="Violet"></div>
+            <div class="accent-color ${savedAccent === '#e85555' ? 'active' : ''}" style="background: #e85555;" data-color="#e85555" title="Coral"></div>
+            <input class="accent-custom" type="color" value="${savedAccent}" title="Custom accent color" aria-label="Custom accent color">
           </div>
         </div>
 
@@ -418,6 +424,11 @@ export class SettingsModal extends HTMLElement {
         AppearanceService.set('accentColor', el.dataset.color);
       });
     });
+
+    this._content.querySelector('.accent-custom').addEventListener('input', (e) => {
+      this._content.querySelectorAll('.accent-color').forEach((c) => c.classList.remove('active'));
+      AppearanceService.set('accentColor', e.target.value);
+    });
   }
 
   _renderPersonalization() {
@@ -425,8 +436,10 @@ export class SettingsModal extends HTMLElement {
     const responseStyle = StorageService.get('responseStyle') || 'balanced';
     const memoryEnabled = StorageService.get('memoryEnabled') !== 'false';
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const accentColor = AppearanceService.get('accentColor') || (isLight ? '#3568e8' : '#5b7cfa');
+    const sidebarBackground = AppearanceService.get('sidebarBackground') || (isLight ? '#ffffff' : '#121212');
     const chatBackground = AppearanceService.get('chatBackground') || (isLight ? '#f7f7f8' : '#1a1a1a');
-    const userBubbleColor = AppearanceService.get('userBubbleColor') || '#10a37f';
+    const userBubbleColor = AppearanceService.get('userBubbleColor') || accentColor;
     const assistantBubbleColor = AppearanceService.get('assistantBubbleColor') || (isLight ? '#ffffff' : '#202020');
 
     this._content.innerHTML = `
@@ -434,8 +447,9 @@ export class SettingsModal extends HTMLElement {
 
       <div class="setting-group">
         <div class="setting-label">Chat appearance</div>
-        <div class="setting-desc">Choose colors for the chat canvas and message cards. Changes are saved on this device.</div>
+        <div class="setting-desc">Choose colors for the sidebar, chat canvas, and message cards. Changes are saved on this device.</div>
         <div class="color-customizer">
+          <label class="color-field">Sidebar <input type="color" data-chat-color="sidebarBackground" value="${sidebarBackground}"></label>
           <label class="color-field">Chat background <input type="color" data-chat-color="chatBackground" value="${chatBackground}"></label>
           <label class="color-field">Your messages <input type="color" data-chat-color="userBubbleColor" value="${userBubbleColor}"></label>
           <label class="color-field">AI messages <input type="color" data-chat-color="assistantBubbleColor" value="${assistantBubbleColor}"></label>

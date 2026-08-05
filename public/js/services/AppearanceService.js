@@ -2,6 +2,7 @@ import { StorageService } from './StorageService.js';
 
 const SETTINGS = {
   accentColor: '--accent-color',
+  sidebarBackground: '--sidebar-bg',
   chatBackground: '--chat-background',
   userBubbleColor: '--user-bubble-bg',
   assistantBubbleColor: '--assistant-bubble-bg'
@@ -29,7 +30,7 @@ export const AppearanceService = {
   },
 
   resetChatColors() {
-    ['chatBackground', 'userBubbleColor', 'assistantBubbleColor'].forEach((key) => {
+    ['sidebarBackground', 'chatBackground', 'userBubbleColor', 'assistantBubbleColor'].forEach((key) => {
       document.documentElement.style.removeProperty(SETTINGS[key]);
       StorageService.remove(key);
     });

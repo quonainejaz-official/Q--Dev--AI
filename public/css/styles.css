@@ -33,14 +33,14 @@
   --text-secondary: #9b9b9b;
   --text-muted: var(--text-secondary);
   --border-color: #2d2d2d;
-  --accent-blue: #4c82fb;
-  --accent-color: var(--accent-blue);
-  --accent-green: #10a37f;
+  --accent-color: #5b7cfa;
+  --accent-blue: var(--accent-color);
+  --accent-green: var(--accent-color);
   --hover-bg: #2a2a2a;
   --input-bg: #242424;
   --modal-bg: var(--surface-bg);
   --chat-background: var(--main-bg);
-  --user-bubble-bg: var(--accent-green);
+  --user-bubble-bg: var(--accent-color);
   --assistant-bubble-bg: color-mix(in srgb, var(--surface-bg) 88%, #ffffff 4%);
   --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.24);
   --sidebar-width: 260px;
@@ -55,14 +55,14 @@
   --text-secondary: #6b6b6b;
   --text-muted: var(--text-secondary);
   --border-color: #e5e5e5;
-  --accent-blue: #2563eb;
-  --accent-color: var(--accent-blue);
-  --accent-green: #0f8f72;
+  --accent-color: #3568e8;
+  --accent-blue: var(--accent-color);
+  --accent-green: var(--accent-color);
   --hover-bg: #f0f0f0;
   --input-bg: #ffffff;
   --modal-bg: var(--surface-bg);
   --chat-background: var(--main-bg);
-  --user-bubble-bg: var(--accent-green);
+  --user-bubble-bg: var(--accent-color);
   --assistant-bubble-bg: var(--surface-bg);
   --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
 }
@@ -1018,8 +1018,8 @@ body {
   gap: 8px;
   padding: 8px 12px;
   margin: 0 12px 8px;
-  background: rgba(76, 130, 251, 0.1);
-  border: 1px solid rgba(76, 130, 251, 0.3);
+  background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
   border-radius: 12px;
   font-size: 13px;
   color: var(--accent-blue);
@@ -1961,7 +1961,7 @@ body {
   border-left: 3px solid var(--accent-blue);
   padding: 8px 16px;
   margin: 12px 0;
-  background: rgba(76, 130, 251, 0.06);
+  background: color-mix(in srgb, var(--accent-color) 6%, transparent);
   border-radius: 0 8px 8px 0;
   color: var(--text-secondary);
 }
@@ -2644,7 +2644,7 @@ body {
 
 .main-content {
   background:
-    radial-gradient(circle at 50% -12%, rgba(16, 163, 127, 0.12), transparent 34%),
+    radial-gradient(circle at 50% -12%, color-mix(in srgb, var(--accent-color) 12%, transparent), transparent 34%),
     var(--chat-background);
 }
 
@@ -2897,7 +2897,7 @@ body {
   flex: 0 0 31px;
   border-radius: 9px;
   color: #ffffff;
-  background: linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 66%, #7957e8));
+  background: linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 74%, #ffffff));
   box-shadow: 0 5px 14px color-mix(in srgb, var(--accent-color) 24%, transparent);
 }
 
@@ -3040,8 +3040,8 @@ body {
 .message.user .message-text {
   background: var(--user-bubble-bg);
   color: #ffffff;
-  border: 1px solid color-mix(in srgb, var(--accent-green) 70%, #ffffff 30%);
-  box-shadow: 0 10px 24px rgba(16, 163, 127, 0.18);
+  border: 1px solid color-mix(in srgb, var(--user-bubble-bg) 70%, #ffffff 30%);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--user-bubble-bg) 18%, transparent);
 }
 
 .message.bot .message-text {
@@ -3072,8 +3072,8 @@ body {
 }
 
 .composer:focus-within {
-  border-color: var(--accent-green);
-  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.26), 0 0 0 3px rgba(16, 163, 127, 0.14);
+  border-color: var(--accent-color);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.26), 0 0 0 3px color-mix(in srgb, var(--accent-color) 14%, transparent);
 }
 
 #messageInput {
