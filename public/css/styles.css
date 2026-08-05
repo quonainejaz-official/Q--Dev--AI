@@ -278,6 +278,46 @@ body {
   z-index: 10;
 }
 
+.app-container.sidebar-collapsed .main-header {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: auto;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-elevated) 78%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent), 0 8px 24px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 20;
+}
+
+.app-container.sidebar-collapsed .main-header .sidebar-toggle-main,
+.app-container.sidebar-collapsed .main-header .new-chat-btn-main,
+.app-container.sidebar-collapsed .main-header .search-btn-main {
+  position: static;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  flex: 0 0 34px;
+}
+
+.app-container.sidebar-collapsed .main-header .sidebar-toggle-main:hover,
+.app-container.sidebar-collapsed .main-header .new-chat-btn-main:hover,
+.app-container.sidebar-collapsed .main-header .search-btn-main:hover {
+  border-color: var(--border-color);
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
 .plus-icon {
   font-size: 18px;
   font-weight: 300;
@@ -1735,7 +1775,9 @@ body {
   }
 
   .main-content {
+    flex: 1 1 100%;
     width: 100%;
+    max-width: 100vw;
     margin-left: 0;
   }
 
@@ -1809,8 +1851,8 @@ body {
   }
 
   .chat-header {
-    padding: 12px 15px 12px 148px !important;
-    height: 60px;
+    padding: 8px 12px 8px 148px !important;
+    height: 64px;
     display: flex;
     align-items: center;
   }
@@ -2619,6 +2661,148 @@ body {
 .chat-header {
   background: color-mix(in srgb, var(--main-bg) 86%, transparent);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  min-height: 64px;
+  height: 64px;
+  padding: 8px 18px;
+  border-bottom-color: color-mix(in srgb, var(--border-color) 76%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+  position: relative;
+  z-index: 5;
+}
+
+.chat-title-container {
+  min-width: 0;
+  gap: 11px;
+}
+
+.chat-title-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 24%, var(--border-color));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent);
+}
+
+.chat-title-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-title-eyebrow {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.chat-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Keep the app title independent from similarly named rich-text styles. */
+.chat-header .chat-title {
+  min-width: 0;
+  max-width: min(42vw, 440px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-header .edit-title-btn {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+
+.chat-header .edit-title-btn:hover {
+  background: var(--hover-bg);
+}
+
+.chat-header-actions {
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent), 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.chat-header .header-action-btn {
+  min-height: 32px;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chat-header .header-action-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color);
+  background: var(--hover-bg);
+  transform: translateY(-1px);
+}
+
+.chat-header .header-action-btn:focus-visible,
+.chat-header .edit-title-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .chat-title-mark,
+  .chat-title-eyebrow,
+  .chat-header .header-action-btn span {
+    display: none;
+  }
+
+  .chat-title-container {
+    gap: 0;
+  }
+
+  .chat-header .chat-title {
+    max-width: 26vw;
+    font-size: 13px;
+  }
+
+  .chat-header-actions {
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .chat-header .header-action-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
 }
 
 .messages {
